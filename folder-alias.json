@@ -1,0 +1,389 @@
+{
+    "apps/web-antd": {
+        "description": "🎨 Ant Design Vue 版本 - 基于 Ant Design Vue 4.x 的管理系统应用"
+    },
+    "public": {
+        "description": "📁 静态资源目录 - 不经过构建的公共资源"
+    },
+    "public/favicon.ico": {
+        "description": "🌐 网站图标 - 浏览器标签页显示的图标"
+    },
+    "src": {
+        "description": "📂 源代码目录 - 应用的所有源代码"
+    },
+    "src/adapter": {
+        "description": "🔌 UI 适配器目录 - 将核心组件适配到 Ant Design Vue"
+    },
+    "src/adapter/component": {
+        "description": "🧩 组件适配器 - 通用组件的 Ant Design 适配"
+    },
+    "src/adapter/component/index.ts": {
+        "description": "📦 组件适配器入口 - 导出所有适配的组件配置"
+    },
+    "src/adapter/form.ts": {
+        "description": "📝 表单适配器 - 将核心表单组件适配到 Ant Design 表单"
+    },
+    "src/adapter/vxe-table.ts": {
+        "description": "📊 表格适配器 - VxeTable 与 Ant Design 的样式和功能适配"
+    },
+    "src/api": {
+        "description": "🌐 API 接口目录 - 所有后端接口调用封装"
+    },
+    "src/api/core": {
+        "description": "🔑 核心 API - 认证、用户、菜单等核心接口"
+    },
+    "src/api/core/auth.ts": {
+        "description": "🔐 认证接口 - 登录、登出、刷新 Token、获取验证码等"
+    },
+    "src/api/core/index.ts": {
+        "description": "📦 核心 API 入口 - 导出所有核心接口"
+    },
+    "src/api/core/menu.ts": {
+        "description": "📋 菜单接口 - 获取用户菜单、权限菜单等"
+    },
+    "src/api/core/user.ts": {
+        "description": "👤 用户接口 - 获取用户信息、更新用户资料等"
+    },
+    "src/api/index.ts": {
+        "description": "📦 API 总入口 - 导出所有 API 接口"
+    },
+    "src/api/request.ts": {
+        "description": "🌐 请求配置 - Axios 实例配置、拦截器、错误处理"
+    },
+    "src/layouts": {
+        "description": "🏛️ 布局组件目录 - 页面整体布局模板"
+    },
+    "src/layouts/auth.vue": {
+        "description": "🔐 认证布局 - 登录、注册等认证页面的布局"
+    },
+    "src/layouts/basic.vue": {
+        "description": "📐 基础布局 - 包含侧边栏、头部、内容区的主布局"
+    },
+    "src/layouts/index.ts": {
+        "description": "📦 布局入口 - 导出所有布局组件"
+    },
+    "src/locales": {
+        "description": "🌍 国际化目录 - 多语言配置和翻译文件"
+    },
+    "src/locales/langs": {
+        "description": "🗣️ 语言包目录 - 各语言的翻译文件"
+    },
+    "src/locales/langs/en-US": {
+        "description": "🇺🇸 英文语言包 - 英文翻译文件"
+    },
+    "src/locales/langs/en-US/demos.json": {
+        "description": "📝 演示页面英文 - 演示页面的英文翻译"
+    },
+    "src/locales/langs/en-US/page.json": {
+        "description": "📄 页面英文 - 通用页面的英文翻译"
+    },
+    "src/locales/langs/zh-CN": {
+        "description": "🇨🇳 中文语言包 - 中文翻译文件"
+    },
+    "src/locales/langs/zh-CN/demos.json": {
+        "description": "📝 演示页面中文 - 演示页面的中文翻译"
+    },
+    "src/locales/langs/zh-CN/page.json": {
+        "description": "📄 页面中文 - 通用页面的中文翻译"
+    },
+    "src/locales/index.ts": {
+        "description": "🌐 国际化入口 - 配置 Vue I18n，注册语言包"
+    },
+    "src/locales/README.md": {
+        "description": "📖 国际化说明 - 如何添加和使用多语言"
+    },
+    "src/router": {
+        "description": "🛣️ 路由配置目录 - Vue Router 路由定义和守卫"
+    },
+    "src/router/routes": {
+        "description": "📍 路由定义目录 - 所有路由配置文件"
+    },
+    "src/router/routes/modules": {
+        "description": "📦 路由模块 - 按功能模块划分的路由"
+    },
+    "src/router/routes/modules/dashboard.ts": {
+        "description": "📊 仪表盘路由 - 工作台、分析页等仪表盘路由"
+    },
+    "src/router/routes/modules/demos.ts": {
+        "description": "🎨 演示路由 - 组件演示、功能演示页面路由"
+    },
+    "src/router/routes/modules/vben.ts": {
+        "description": "🔧 Vben 路由 - 框架相关的演示和文档路由"
+    },
+    "src/router/routes/core.ts": {
+        "description": "🔑 核心路由 - 登录、404、个人中心等核心页面路由"
+    },
+    "src/router/routes/index.ts": {
+        "description": "📦 路由入口 - 汇总所有路由配置"
+    },
+    "src/router/access.ts": {
+        "description": "🔐 权限配置 - 定义路由权限和角色访问控制"
+    },
+    "src/router/guard.ts": {
+        "description": "🛡️ 路由守卫 - 全局路由拦截、权限验证、进度条等"
+    },
+    "src/router/index.ts": {
+        "description": "🚦 路由入口 - 创建和配置 Vue Router 实例"
+    },
+    "src/store": {
+        "description": "📊 状态管理目录 - Pinia Store 状态存储"
+    },
+    "src/store/auth.ts": {
+        "description": "🔐 认证状态 - 用户登录状态、Token、用户信息等"
+    },
+    "src/store/index.ts": {
+        "description": "📦 Store 入口 - 导出所有 Store 模块"
+    },
+    "src/views": {
+        "description": "📄 页面视图目录 - 所有业务页面组件"
+    },
+    "src/views/_core": {
+        "description": "🔑 核心页面 - 框架核心页面（登录、404、个人中心等）"
+    },
+    "src/views/_core/about": {
+        "description": "ℹ️ 关于页面 - 系统关于页面"
+    },
+    "src/views/_core/about/index.vue": {
+        "description": "📄 关于页面组件 - 显示系统版本、依赖信息等"
+    },
+    "src/views/_core/authentication": {
+        "description": "🔐 认证页面 - 登录、注册、忘记密码等"
+    },
+    "src/views/_core/authentication/code-login.vue": {
+        "description": "📱 验证码登录 - 手机验证码登录页面"
+    },
+    "src/views/_core/authentication/forget-password.vue": {
+        "description": "🔑 忘记密码 - 密码找回页面"
+    },
+    "src/views/_core/authentication/login.vue": {
+        "description": "🔐 登录页面 - 用户名密码登录"
+    },
+    "src/views/_core/authentication/qrcode-login.vue": {
+        "description": "📷 二维码登录 - 扫码登录页面"
+    },
+    "src/views/_core/authentication/register.vue": {
+        "description": "📝 注册页面 - 用户注册"
+    },
+    "src/views/_core/fallback": {
+        "description": "⚠️ 异常页面 - 404、500、403 等错误页面"
+    },
+    "src/views/_core/fallback/coming-soon.vue": {
+        "description": "🚧 即将上线 - 功能开发中页面"
+    },
+    "src/views/_core/fallback/forbidden.vue": {
+        "description": "🚫 403 页面 - 无权限访问页面"
+    },
+    "src/views/_core/fallback/internal-error.vue": {
+        "description": "💥 500 页面 - 服务器错误页面"
+    },
+    "src/views/_core/fallback/not-found.vue": {
+        "description": "🔍 404 页面 - 页面不存在"
+    },
+    "src/views/_core/fallback/offline.vue": {
+        "description": "📡 离线页面 - 网络断开页面"
+    },
+    "src/views/_core/profile": {
+        "description": "👤 个人中心 - 用户个人信息和设置"
+    },
+    "src/views/_core/profile/base-setting.vue": {
+        "description": "📝 基本设置 - 用户基本信息编辑"
+    },
+    "src/views/_core/profile/index.vue": {
+        "description": "👤 个人中心首页 - 个人信息展示"
+    },
+    "src/views/_core/profile/notification-setting.vue": {
+        "description": "🔔 通知设置 - 消息通知偏好设置"
+    },
+    "src/views/_core/profile/password-setting.vue": {
+        "description": "🔒 密码设置 - 修改登录密码"
+    },
+    "src/views/_core/profile/security-setting.vue": {
+        "description": "🛡️ 安全设置 - 账号安全相关设置"
+    },
+    "src/views/_core/README.md": {
+        "description": "📖 核心页面说明 - 核心页面使用文档"
+    },
+    "src/views/dashboard": {
+        "description": "📊 仪表盘页面 - 数据概览和分析页面"
+    },
+    "src/views/dashboard/analytics": {
+        "description": "📈 数据分析 - 数据统计和分析页面"
+    },
+    "src/views/dashboard/analytics/analytics-trends.vue": {
+        "description": "📉 趋势分析组件 - 数据趋势图表"
+    },
+    "src/views/dashboard/analytics/analytics-visits-data.vue": {
+        "description": "📊 访问数据组件 - 访问量统计"
+    },
+    "src/views/dashboard/analytics/analytics-visits-sales.vue": {
+        "description": "💰 销售数据组件 - 销售额统计"
+    },
+    "src/views/dashboard/analytics/analytics-visits-source.vue": {
+        "description": "🌐 来源分析组件 - 访问来源统计"
+    },
+    "src/views/dashboard/analytics/analytics-visits.vue": {
+        "description": "👥 访问分析组件 - 访问量分析"
+    },
+    "src/views/dashboard/analytics/index.vue": {
+        "description": "📈 分析页面 - 数据分析主页面"
+    },
+    "src/views/dashboard/workspace": {
+        "description": "💼 工作台 - 个人工作台页面"
+    },
+    "src/views/dashboard/workspace/index.vue": {
+        "description": "🏠 工作台首页 - 快捷入口、待办事项、最近访问等"
+    },
+    "src/views/demos": {
+        "description": "🎨 演示页面 - 组件和功能演示"
+    },
+    "src/views/demos/antd": {
+        "description": "🎨 Ant Design 演示 - Ant Design 组件使用示例"
+    },
+    "src/views/demos/antd/index.vue": {
+        "description": "📦 组件演示页 - 展示 Ant Design 组件集成"
+    },
+    "src/app.vue": {
+        "description": "🎯 应用根组件 - Vue 应用的根组件"
+    },
+    "src/bootstrap.ts": {
+        "description": "🚀 应用启动 - 应用初始化逻辑（注册组件、插件等）"
+    },
+    "src/main.ts": {
+        "description": "🎬 应用入口 - Vue 应用创建和挂载"
+    },
+    "src/preferences.ts": {
+        "description": "⚙️ 偏好配置 - 应用级偏好设置（主题、布局等）"
+    },
+    "index.html": {
+        "description": "🌐 HTML 入口 - 应用的 HTML 模板文件"
+    },
+    "package.json": {
+        "description": "📦 包配置 - 应用依赖和脚本配置"
+    },
+    "postcss.config.mjs": {
+        "description": "🎨 PostCSS 配置 - CSS 后处理器配置"
+    },
+    "tailwind.config.mjs": {
+        "description": "🌊 Tailwind 配置 - Tailwind CSS 配置"
+    },
+    "tsconfig.json": {
+        "description": "📘 TS 配置 - TypeScript 编译配置"
+    },
+    "tsconfig.node.json": {
+        "description": "📘 Node TS 配置 - Node 环境的 TypeScript 配置"
+    },
+    "vite.config.mts": {
+        "description": "⚡ Vite 配置 - Vite 构建工具配置"
+    },
+    "apps/web-antdv-next": {
+        "description": "🎨 Ant Design Vue Next 版本 - 基于 antdv-next 的管理系统"
+    },
+    "newWeb": {
+        "description": "🌐 前台门户网站项目目录 - 独立的前台展示项目"
+    },
+    "newWeb/web": {
+        "description": "🌐 前台门户网站 - Vue 3 + Vite 独立前台项目，展示企业门户网站"
+    },
+    "newWeb/web/src": {
+        "description": "📂 前台源代码目录 - 前台项目的所有源代码"
+    },
+    "newWeb/web/src/assets": {
+        "description": "🖼️ 前台资源目录 - 图片、图标等静态资源"
+    },
+    "newWeb/web/src/components": {
+        "description": "🧩 前台组件目录 - 可复用的 Vue 组件"
+    },
+    "newWeb/web/src/App.vue": {
+        "description": "🎯 前台根组件 - 前台应用的根组件"
+    },
+    "newWeb/web/src/main.ts": {
+        "description": "🎬 前台入口 - 前台应用创建和挂载"
+    },
+    "newWeb/web/src/style.css": {
+        "description": "🎨 前台全局样式 - 前台应用的全局 CSS 样式"
+    },
+    "newWeb/web/public": {
+        "description": "📁 前台静态资源 - 不经过构建的前台公共资源"
+    },
+    "newWeb/web/index.html": {
+        "description": "🌐 前台 HTML 入口 - 前台应用的 HTML 模板文件"
+    },
+    "newWeb/web/package.json": {
+        "description": "📦 前台包配置 - 前台项目依赖和脚本配置"
+    },
+    "newWeb/web/vite.config.ts": {
+        "description": "⚡ 前台 Vite 配置 - 前台项目的 Vite 构建工具配置"
+    },
+    "newWeb/web/tsconfig.json": {
+        "description": "📘 前台 TS 配置 - 前台项目的 TypeScript 编译配置"
+    },
+    "src/views/templates": {
+        "description": "🎨 模板库目录 - 企业门户网站模板配置和预览"
+    },
+    "src/views/templates/template-1": {
+        "description": "🔵 现代科技风格模板 - 蓝色系配色，适合科技公司"
+    },
+    "src/views/templates/template-1/config.ts": {
+        "description": "⚙️ 模板 1 配置 - 现代科技风格模板的配置文件"
+    },
+    "src/views/templates/template-2": {
+        "description": "🟡 商务优雅风格模板 - 黑金配色，适合传统企业"
+    },
+    "src/views/templates/template-2/config.ts": {
+        "description": "⚙️ 模板 2 配置 - 商务优雅风格模板的配置文件"
+    },
+    "src/views/templates/template-3": {
+        "description": "🔴 创意设计风格模板 - 红青配色，适合创意行业"
+    },
+    "src/views/templates/template-3/config.ts": {
+        "description": "⚙️ 模板 3 配置 - 创意设计风格模板的配置文件"
+    },
+    "src/views/templates/TemplatePreview.vue": {
+        "description": "👁️ 模板预览组件 - 实时渲染模板效果的预览组件"
+    },
+    "src/views/templates/index.ts": {
+        "description": "📦 模板库入口 - 导出所有模板配置"
+    },
+    "src/views/templates/README.md": {
+        "description": "📖 模板库说明 - 模板系统使用文档"
+    },
+    "src/views/templates/QUICKSTART.md": {
+        "description": "🚀 模板快速开始 - 快速开始指南"
+    },
+    "src/views/templateViews": {
+        "description": "🌐 前台模板视图目录 - 前台门户网站的模板视图组件"
+    },
+    "src/views/templateViews/templateViews-1": {
+        "description": "🔵 模板 1 前台视图 - 现代科技风格的前台展示"
+    },
+    "src/views/templateViews/templateViews-1/index.vue": {
+        "description": "📄 模板 1 前台页面 - 现代科技风格的前台页面组件"
+    },
+    "src/views/templateViews/templateViews-2": {
+        "description": "🟡 模板 2 前台视图 - 商务优雅风格的前台展示"
+    },
+    "src/views/templateViews/templateViews-2/index.vue": {
+        "description": "📄 模板 2 前台页面 - 商务优雅风格的前台页面组件"
+    },
+    "src/views/templateViews/templateViews-3": {
+        "description": "🔴 模板 3 前台视图 - 创意设计风格的前台展示"
+    },
+    "src/views/templateViews/templateViews-3/index.vue": {
+        "description": "📄 模板 3 前台页面 - 创意设计风格的前台页面组件"
+    },
+    "src/views/templateViews/index.vue": {
+        "description": "🌐 前台模板路由页面 - 根据路由参数加载对应的模板视图"
+    },
+    "src/views/templateViews/Navigation.vue": {
+        "description": "🧭 前台导航组件 - 前台门户网站的导航栏组件"
+    },
+    "src/store/template.ts": {
+        "description": "📊 模板状态管理 - Pinia Store 管理模板配置和已生成网站数据"
+    },
+    "src/store/page-config.ts": {
+        "description": "📋 页面配置状态 - 页面配置相关的状态管理"
+    },
+    "src/router/routes/modules/template-view.ts": {
+        "description": "🛣️ 前台模板路由 - 前台门户网站的路由配置"
+    }
+}

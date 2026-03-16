@@ -1,0 +1,21 @@
+{
+    "auth": {
+        "login": "登录",
+        "register": "注册",
+        "codeLogin": "验证码登录",
+        "qrcodeLogin": "二维码登录",
+        "forgetPassword": "忘记密码",
+        "profile": "个人中心"
+    },
+    "dashboard": {
+        "title": "功能入口",
+        "analytics": "页面模版",
+        "workspace": "管理模版页面"
+    },
+    "pageManager": {
+        "title": "页面管理",
+        "template": "生成页面",
+        "editor": "编辑页面",
+        "preview": "查看页面"
+    }
+}
