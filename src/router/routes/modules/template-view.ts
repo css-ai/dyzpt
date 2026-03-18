@@ -9,7 +9,9 @@ const routes: RouteRecordRaw[] = [
       title: '企业网站',
       layout: 'blank',
       ignoreAccess: true,
-      requiresAuth: false,
+      requiresAuth: true,
+      noBasicLayout:true,
+      hideInMenu:true
     },
   },
 ];

@@ -37,7 +37,7 @@ const templateComponent = computed(() => {
     <div v-else class="error-page">
       <h1>模板不存在</h1>
       <p>抱歉，您访问的模板不存在或已被删除。</p>
-      <a href="/dashboard/analytics">返回模板库</a>
+      <a href="/analytics">返回模板库</a>
     </div>
   </div>
 </template>
