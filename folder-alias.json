@@ -1,0 +1,530 @@
+{
+  "apps": {
+    "description": "📱 应用层 - 存放所有独立的前端应用和后端服务"
+  },
+  "apps/backend-mock": {
+    "description": "🖥️ Mock 后端服务 - 基于 Nitro 的本地开发 Mock API 服务"
+  },
+  "apps/backend-mock/api": {
+    "description": "🔌 API 路由 - Mock API 接口定义"
+  },
+  "apps/backend-mock/middleware": {
+    "description": "🛡️ 中间件 - API 请求拦截和处理"
+  },
+  "apps/backend-mock/utils": {
+    "description": "🔧 工具函数 - Mock 服务工具方法"
+  },
+  "apps/web-antd": {
+    "description": "🎨 Ant Design Vue 版本 - 基于 Ant Design Vue 4.x 的管理系统应用"
+  },
+  "apps/web-antd/public": {
+    "description": "📁 静态资源目录 - 不经过构建的公共资源"
+  },
+  "apps/web-antd/public/favicon.ico": {
+    "description": "🌐 网站图标 - 浏览器标签页显示的图标"
+  },
+  "apps/web-antd/src": {
+    "description": "📂 源代码目录 - 应用的所有源代码"
+  },
+  "apps/web-antd/src/adapter": {
+    "description": "🔌 UI 适配器目录 - 将核心组件适配到 Ant Design Vue"
+  },
+  "apps/web-antd/src/adapter/component": {
+    "description": "🧩 组件适配器 - 通用组件的 Ant Design 适配"
+  },
+  "apps/web-antd/src/adapter/component/index.ts": {
+    "description": "📦 组件适配器入口 - 导出所有适配的组件配置"
+  },
+  "apps/web-antd/src/adapter/form.ts": {
+    "description": "📝 表单适配器 - 将核心表单组件适配到 Ant Design 表单"
+  },
+  "apps/web-antd/src/adapter/vxe-table.ts": {
+    "description": "📊 表格适配器 - VxeTable 与 Ant Design 的样式和功能适配"
+  },
+  "apps/web-antd/src/api": {
+    "description": "🌐 API 接口目录 - 所有后端接口调用封装"
+  },
+  "apps/web-antd/src/api/core": {
+    "description": "🔑 核心 API - 认证、用户、菜单等核心接口"
+  },
+  "apps/web-antd/src/api/core/auth.ts": {
+    "description": "🔐 认证接口 - 登录、登出、刷新 Token、获取验证码等"
+  },
+  "apps/web-antd/src/api/core/index.ts": {
+    "description": "📦 核心 API 入口 - 导出所有核心接口"
+  },
+  "apps/web-antd/src/api/core/menu.ts": {
+    "description": "📋 菜单接口 - 获取用户菜单、权限菜单等"
+  },
+  "apps/web-antd/src/api/core/user.ts": {
+    "description": "👤 用户接口 - 获取用户信息、更新用户资料等"
+  },
+  "apps/web-antd/src/api/index.ts": {
+    "description": "📦 API 总入口 - 导出所有 API 接口"
+  },
+  "apps/web-antd/src/api/request.ts": {
+    "description": "🌐 请求配置 - Axios 实例配置、拦截器、错误处理"
+  },
+  "apps/web-antd/src/layouts": {
+    "description": "🏛️ 布局组件目录 - 页面整体布局模板"
+  },
+  "apps/web-antd/src/layouts/auth.vue": {
+    "description": "🔐 认证布局 - 登录、注册等认证页面的布局"
+  },
+  "apps/web-antd/src/layouts/basic.vue": {
+    "description": "📐 基础布局 - 包含侧边栏、头部、内容区的主布局"
+  },
+  "apps/web-antd/src/layouts/index.ts": {
+    "description": "📦 布局入口 - 导出所有布局组件"
+  },
+  "apps/web-antd/src/locales": {
+    "description": "🌍 国际化目录 - 多语言配置和翻译文件"
+  },
+  "apps/web-antd/src/locales/langs": {
+    "description": "🗣️ 语言包目录 - 各语言的翻译文件"
+  },
+  "apps/web-antd/src/locales/langs/en-US": {
+    "description": "🇺🇸 英文语言包 - 英文翻译文件"
+  },
+  "apps/web-antd/src/locales/langs/en-US/demos.json": {
+    "description": "📝 演示页面英文 - 演示页面的英文翻译"
+  },
+  "apps/web-antd/src/locales/langs/en-US/page.json": {
+    "description": "📄 页面英文 - 通用页面的英文翻译"
+  },
+  "apps/web-antd/src/locales/langs/zh-CN": {
+    "description": "🇨🇳 中文语言包 - 中文翻译文件"
+  },
+  "apps/web-antd/src/locales/langs/zh-CN/demos.json": {
+    "description": "📝 演示页面中文 - 演示页面的中文翻译"
+  },
+  "apps/web-antd/src/locales/langs/zh-CN/page.json": {
+    "description": "📄 页面中文 - 通用页面的中文翻译"
+  },
+  "apps/web-antd/src/locales/index.ts": {
+    "description": "🌐 国际化入口 - 配置 Vue I18n，注册语言包"
+  },
+  "apps/web-antd/src/locales/README.md": {
+    "description": "📖 国际化说明 - 如何添加和使用多语言"
+  },
+  "apps/web-antd/src/router": {
+    "description": "🛣️ 路由配置目录 - Vue Router 路由定义和守卫"
+  },
+  "apps/web-antd/src/router/routes": {
+    "description": "📍 路由定义目录 - 所有路由配置文件"
+  },
+  "apps/web-antd/src/router/routes/modules": {
+    "description": "📦 路由模块 - 按功能模块划分的路由"
+  },
+  "apps/web-antd/src/router/routes/modules/dashboard.ts": {
+    "description": "📊 仪表盘路由 - 工作台、分析页等仪表盘路由"
+  },
+  "apps/web-antd/src/router/routes/modules/demos.ts": {
+    "description": "🎨 演示路由 - 组件演示、功能演示页面路由"
+  },
+  "apps/web-antd/src/router/routes/modules/vben.ts": {
+    "description": "🔧 Vben 路由 - 框架相关的演示和文档路由"
+  },
+  "apps/web-antd/src/router/routes/core.ts": {
+    "description": "🔑 核心路由 - 登录、404、个人中心等核心页面路由"
+  },
+  "apps/web-antd/src/router/routes/index.ts": {
+    "description": "📦 路由入口 - 汇总所有路由配置"
+  },
+  "apps/web-antd/src/router/access.ts": {
+    "description": "🔐 权限配置 - 定义路由权限和角色访问控制"
+  },
+  "apps/web-antd/src/router/guard.ts": {
+    "description": "🛡️ 路由守卫 - 全局路由拦截、权限验证、进度条等"
+  },
+  "apps/web-antd/src/router/index.ts": {
+    "description": "🚦 路由入口 - 创建和配置 Vue Router 实例"
+  },
+  "apps/web-antd/src/store": {
+    "description": "📊 状态管理目录 - Pinia Store 状态存储"
+  },
+  "apps/web-antd/src/store/auth.ts": {
+    "description": "🔐 认证状态 - 用户登录状态、Token、用户信息等"
+  },
+  "apps/web-antd/src/store/index.ts": {
+    "description": "📦 Store 入口 - 导出所有 Store 模块"
+  },
+  "apps/web-antd/src/views": {
+    "description": "📄 页面视图目录 - 所有业务页面组件"
+  },
+  "apps/web-antd/src/views/_core": {
+    "description": "🔑 核心页面 - 框架核心页面（登录、404、个人中心等）"
+  },
+  "apps/web-antd/src/views/_core/about": {
+    "description": "ℹ️ 关于页面 - 系统关于页面"
+  },
+  "apps/web-antd/src/views/_core/about/index.vue": {
+    "description": "📄 关于页面组件 - 显示系统版本、依赖信息等"
+  },
+  "apps/web-antd/src/views/_core/authentication": {
+    "description": "🔐 认证页面 - 登录、注册、忘记密码等"
+  },
+  "apps/web-antd/src/views/_core/authentication/code-login.vue": {
+    "description": "📱 验证码登录 - 手机验证码登录页面"
+  },
+  "apps/web-antd/src/views/_core/authentication/forget-password.vue": {
+    "description": "🔑 忘记密码 - 密码找回页面"
+  },
+  "apps/web-antd/src/views/_core/authentication/login.vue": {
+    "description": "🔐 登录页面 - 用户名密码登录"
+  },
+  "apps/web-antd/src/views/_core/authentication/qrcode-login.vue": {
+    "description": "📷 二维码登录 - 扫码登录页面"
+  },
+  "apps/web-antd/src/views/_core/authentication/register.vue": {
+    "description": "📝 注册页面 - 用户注册"
+  },
+  "apps/web-antd/src/views/_core/fallback": {
+    "description": "⚠️ 异常页面 - 404、500、403 等错误页面"
+  },
+  "apps/web-antd/src/views/_core/fallback/coming-soon.vue": {
+    "description": "🚧 即将上线 - 功能开发中页面"
+  },
+  "apps/web-antd/src/views/_core/fallback/forbidden.vue": {
+    "description": "🚫 403 页面 - 无权限访问页面"
+  },
+  "apps/web-antd/src/views/_core/fallback/internal-error.vue": {
+    "description": "💥 500 页面 - 服务器错误页面"
+  },
+  "apps/web-antd/src/views/_core/fallback/not-found.vue": {
+    "description": "🔍 404 页面 - 页面不存在"
+  },
+  "apps/web-antd/src/views/_core/fallback/offline.vue": {
+    "description": "📡 离线页面 - 网络断开页面"
+  },
+  "apps/web-antd/src/views/_core/profile": {
+    "description": "👤 个人中心 - 用户个人信息和设置"
+  },
+  "apps/web-antd/src/views/_core/profile/base-setting.vue": {
+    "description": "📝 基本设置 - 用户基本信息编辑"
+  },
+  "apps/web-antd/src/views/_core/profile/index.vue": {
+    "description": "👤 个人中心首页 - 个人信息展示"
+  },
+  "apps/web-antd/src/views/_core/profile/notification-setting.vue": {
+    "description": "🔔 通知设置 - 消息通知偏好设置"
+  },
+  "apps/web-antd/src/views/_core/profile/password-setting.vue": {
+    "description": "🔒 密码设置 - 修改登录密码"
+  },
+  "apps/web-antd/src/views/_core/profile/security-setting.vue": {
+    "description": "🛡️ 安全设置 - 账号安全相关设置"
+  },
+  "apps/web-antd/src/views/_core/README.md": {
+    "description": "📖 核心页面说明 - 核心页面使用文档"
+  },
+  "apps/web-antd/src/views/dashboard": {
+    "description": "📊 仪表盘页面 - 数据概览和分析页面"
+  },
+  "apps/web-antd/src/views/dashboard/analytics": {
+    "description": "📈 数据分析 - 数据统计和分析页面"
+  },
+  "apps/web-antd/src/views/dashboard/analytics/analytics-trends.vue": {
+    "description": "📉 趋势分析组件 - 数据趋势图表"
+  },
+  "apps/web-antd/src/views/dashboard/analytics/analytics-visits-data.vue": {
+    "description": "📊 访问数据组件 - 访问量统计"
+  },
+  "apps/web-antd/src/views/dashboard/analytics/analytics-visits-sales.vue": {
+    "description": "💰 销售数据组件 - 销售额统计"
+  },
+  "apps/web-antd/src/views/dashboard/analytics/analytics-visits-source.vue": {
+    "description": "🌐 来源分析组件 - 访问来源统计"
+  },
+  "apps/web-antd/src/views/dashboard/analytics/analytics-visits.vue": {
+    "description": "👥 访问分析组件 - 访问量分析"
+  },
+  "apps/web-antd/src/views/dashboard/analytics/index.vue": {
+    "description": "📈 分析页面 - 数据分析主页面"
+  },
+  "apps/web-antd/src/views/dashboard/workspace": {
+    "description": "💼 工作台 - 个人工作台页面"
+  },
+  "apps/web-antd/src/views/dashboard/workspace/index.vue": {
+    "description": "🏠 工作台首页 - 快捷入口、待办事项、最近访问等"
+  },
+  "apps/web-antd/src/views/demos": {
+    "description": "🎨 演示页面 - 组件和功能演示"
+  },
+  "apps/web-antd/src/views/demos/antd": {
+    "description": "🎨 Ant Design 演示 - Ant Design 组件使用示例"
+  },
+  "apps/web-antd/src/views/demos/antd/index.vue": {
+    "description": "📦 组件演示页 - 展示 Ant Design 组件集成"
+  },
+  "apps/web-antd/src/app.vue": {
+    "description": "🎯 应用根组件 - Vue 应用的根组件"
+  },
+  "apps/web-antd/src/bootstrap.ts": {
+    "description": "🚀 应用启动 - 应用初始化逻辑（注册组件、插件等）"
+  },
+  "apps/web-antd/src/main.ts": {
+    "description": "🎬 应用入口 - Vue 应用创建和挂载"
+  },
+  "apps/web-antd/src/preferences.ts": {
+    "description": "⚙️ 偏好配置 - 应用级偏好设置（主题、布局等）"
+  },
+  "apps/web-antd/index.html": {
+    "description": "🌐 HTML 入口 - 应用的 HTML 模板文件"
+  },
+  "apps/web-antd/package.json": {
+    "description": "📦 包配置 - 应用依赖和脚本配置"
+  },
+  "apps/web-antd/postcss.config.mjs": {
+    "description": "🎨 PostCSS 配置 - CSS 后处理器配置"
+  },
+  "apps/web-antd/tailwind.config.mjs": {
+    "description": "🌊 Tailwind 配置 - Tailwind CSS 配置"
+  },
+  "apps/web-antd/tsconfig.json": {
+    "description": "📘 TS 配置 - TypeScript 编译配置"
+  },
+  "apps/web-antd/tsconfig.node.json": {
+    "description": "📘 Node TS 配置 - Node 环境的 TypeScript 配置"
+  },
+  "apps/web-antd/vite.config.mts": {
+    "description": "⚡ Vite 配置 - Vite 构建工具配置"
+  },
+  "apps/web-antdv-next": {
+    "description": "🎨 Ant Design Vue Next 版本 - 基于 antdv-next 的管理系统"
+  },
+  "apps/web-ele": {
+    "description": "⚡ Element Plus 版本 - 基于 Element Plus 的管理系统"
+  },
+  "apps/web-naive": {
+    "description": "🌈 Naive UI 版本 - 基于 Naive UI 的管理系统"
+  },
+  "apps/web-tdesign": {
+    "description": "🎯 TDesign 版本 - 基于 TDesign Vue Next 的管理系统"
+  },
+  "docs": {
+    "description": "📚 项目文档 - VitePress 文档站点，包含开发指南和 API 文档"
+  },
+  "docs/src": {
+    "description": "📝 文档源码 - Markdown 文档内容"
+  },
+  "internal": {
+    "description": "🔧 内部工具 - 项目构建、开发工具和配置"
+  },
+  "internal/lint-configs": {
+    "description": "📏 代码规范配置 - 统一的 Lint 工具配置包"
+  },
+  "internal/lint-configs/commitlint-config": {
+    "description": "💬 Commitlint 配置 - Git 提交信息规范检查"
+  },
+  "internal/lint-configs/eslint-config": {
+    "description": "🔍 ESLint 配置 - JavaScript/TypeScript 代码质量检查"
+  },
+  "internal/lint-configs/prettier-config": {
+    "description": "✨ Prettier 配置 - 代码格式化规则"
+  },
+  "internal/lint-configs/stylelint-config": {
+    "description": "🎨 Stylelint 配置 - CSS/SCSS 样式文件检查"
+  },
+  "internal/node-utils": {
+    "description": "🛠️ Node 工具包 - 构建脚本和 Node.js 工具函数"
+  },
+  "internal/tailwind-config": {
+    "description": "🌊 Tailwind 配置包 - 统一的 Tailwind CSS 配置"
+  },
+  "internal/tsconfig": {
+    "description": "📘 TypeScript 配置包 - 可复用的 TS 配置预设"
+  },
+  "internal/vite-config": {
+    "description": "⚡ Vite 配置包 - 统一的 Vite 构建配置"
+  },
+  "packages": {
+    "description": "📦 共享包 - 所有可复用的业务包和工具包"
+  },
+  "packages/@core": {
+    "description": "🎯 核心包 - 框架核心功能，UI 无关的基础能力"
+  },
+  "packages/@core/base": {
+    "description": "🏗️ 基础设施包 - 最底层的基础功能模块"
+  },
+  "packages/@core/base/design": {
+    "description": "🎨 设计系统 - 设计令牌、CSS 变量、主题配置"
+  },
+  "packages/@core/base/icons": {
+    "description": "🖼️ 图标基础包 - 图标组件和图标注册"
+  },
+  "packages/@core/base/shared": {
+    "description": "🔄 共享工具 - 跨包共享的工具函数和常量"
+  },
+  "packages/@core/base/typings": {
+    "description": "📌 核心类型 - 核心业务的 TypeScript 类型定义"
+  },
+  "packages/@core/composables": {
+    "description": "🪝 核心 Composables - 框架级可复用的 Vue 组合式函数"
+  },
+  "packages/@core/preferences": {
+    "description": "⚙️ 偏好设置核心 - 用户偏好和应用配置的核心逻辑"
+  },
+  "packages/@core/ui-kit": {
+    "description": "🧩 UI 组件库 - 框架无关的通用 UI 组件集合"
+  },
+  "packages/@core/ui-kit/form-ui": {
+    "description": "📝 表单 UI - 动态表单、表单设计器组件"
+  },
+  "packages/@core/ui-kit/layout-ui": {
+    "description": "📐 布局 UI - Header、Sidebar、Content 等布局组件"
+  },
+  "packages/@core/ui-kit/menu-ui": {
+    "description": "📋 菜单 UI - 导航菜单、侧边栏菜单组件"
+  },
+  "packages/@core/ui-kit/popup-ui": {
+    "description": "🪟 弹窗 UI - Modal、Drawer、Notification 等弹窗组件"
+  },
+  "packages/@core/ui-kit/shadcn-ui": {
+    "description": "🎭 Shadcn UI - 基于 Radix Vue 的 shadcn/ui 组件"
+  },
+  "packages/@core/ui-kit/tabs-ui": {
+    "description": "📑 标签页 UI - 多标签页、标签页管理组件"
+  },
+  "packages/constants": {
+    "description": "🔢 常量定义 - 全局常量、枚举、配置常量"
+  },
+  "packages/effects": {
+    "description": "⚡ 业务效果包 - 带副作用的业务功能模块"
+  },
+  "packages/effects/access": {
+    "description": "🔐 权限控制 - 权限验证、角色管理、访问控制"
+  },
+  "packages/effects/common-ui": {
+    "description": "🎯 通用业务 UI - 业务相关的通用组件（用户头像、通知等）"
+  },
+  "packages/effects/hooks": {
+    "description": "🪝 业务 Hooks - 业务场景的 Vue Composables"
+  },
+  "packages/effects/layouts": {
+    "description": "🏛️ 业务布局 - 完整的页面布局组件（含侧边栏、头部等）"
+  },
+  "packages/effects/plugins": {
+    "description": "🔌 插件集成 - 第三方库的封装和集成（图表、编辑器等）"
+  },
+  "packages/effects/request": {
+    "description": "🌐 HTTP 请求 - Axios 封装、请求拦截、错误处理"
+  },
+  "packages/icons": {
+    "description": "✨ 图标库 - Iconify 图标、自定义 SVG 图标"
+  },
+  "packages/locales": {
+    "description": "🌍 国际化 - Vue I18n 配置、多语言翻译文件"
+  },
+  "packages/preferences": {
+    "description": "⚙️ 偏好设置 - 应用配置、用户偏好管理（主题、语言等）"
+  },
+  "packages/stores": {
+    "description": "📊 状态管理 - Pinia Store 模块（用户、应用、标签页等）"
+  },
+  "packages/styles": {
+    "description": "💅 样式库 - 全局样式、CSS 变量、各 UI 框架的样式适配"
+  },
+  "packages/types": {
+    "description": "📌 类型定义 - 全局 TypeScript 类型、接口定义"
+  },
+  "packages/utils": {
+    "description": "🔧 工具函数 - 通用工具方法（日期、字符串、数组等）"
+  },
+  "playground": {
+    "description": "🎮 演示项目 - 功能演示和测试的独立应用"
+  },
+  "playground/src": {
+    "description": "📂 演示源码 - Playground 应用源代码"
+  },
+  "playground/__tests__": {
+    "description": "🧪 E2E 测试 - Playwright 端到端测试"
+  },
+  "scripts": {
+    "description": "📜 脚本工具 - 项目构建、部署、维护脚本"
+  },
+  "scripts/deploy": {
+    "description": "🚀 部署脚本 - Docker 构建、部署相关脚本"
+  },
+  "scripts/turbo-run": {
+    "description": "🏃 Turbo 运行器 - Turbo 任务运行工具"
+  },
+  "scripts/vsh": {
+    "description": "🔧 VSH 工具 - 项目专用命令行工具（检查依赖、循环依赖等）"
+  },
+  ".changeset": {
+    "description": "📝 变更集 - Changesets 版本管理和变更日志"
+  },
+  ".github": {
+    "description": "🤖 GitHub 配置 - CI/CD 工作流、Issue 模板等"
+  },
+  ".vscode": {
+    "description": "💻 VS Code 配置 - 编辑器设置、插件推荐、调试配置"
+  },
+  "node_modules": {
+    "description": "📦 依赖模块 - npm/pnpm 安装的第三方依赖"
+  },
+  ".dockerignore": {
+    "description": "🐳 Docker 忽略文件 - Docker 构建时忽略的文件"
+  },
+  ".editorconfig": {
+    "description": "✏️ 编辑器配置 - 统一的编辑器代码风格配置"
+  },
+  "cspell.json": {
+    "description": "🔤 拼写检查配置 - CSpell 代码拼写检查规则"
+  },
+  "eslint.config.mjs": {
+    "description": "🔍 ESLint 主配置 - 项目根级别的 ESLint 配置"
+  },
+  "folder-alias.json": {
+    "description": "📁 文件夹别名 - 项目目录结构说明和别名定义"
+  },
+  "lefthook.yml": {
+    "description": "🪝 Git Hooks 配置 - Lefthook Git 钩子配置"
+  },
+  "LICENSE": {
+    "description": "📜 开源协议 - MIT 许可证"
+  },
+  "package.json": {
+    "description": "📦 项目配置 - 依赖、脚本、元信息配置"
+  },
+  "pnpm-lock.yaml": {
+    "description": "🔒 依赖锁定 - pnpm 依赖版本锁定文件"
+  },
+  "pnpm-workspace.yaml": {
+    "description": "🏢 工作区配置 - pnpm Monorepo 工作区定义和依赖目录"
+  },
+  "postcss.config.mjs": {
+    "description": "🎨 PostCSS 配置 - CSS 后处理器配置"
+  },
+  "private-folder-alias.json": {
+    "description": "🔒 私有别名 - 项目私有的文件夹别名配置"
+  },
+  "README.md": {
+    "description": "📖 项目说明 - 项目介绍、快速开始、功能特性"
+  },
+  "README.zh-CN.md": {
+    "description": "📖 中文说明 - 项目中文文档"
+  },
+  "README.ja-JP.md": {
+    "description": "📖 日文说明 - 项目日文文档"
+  },
+  "stylelint.config.mjs": {
+    "description": "🎨 Stylelint 主配置 - 项目根级别的样式检查配置"
+  },
+  "tailwind.config.mjs": {
+    "description": "🌊 Tailwind 主配置 - Tailwind CSS 配置文件"
+  },
+  "tea.yaml": {
+    "description": "🍵 Tea 配置 - Tea 包管理器配置"
+  },
+  "turbo.json": {
+    "description": "🏎️ Turbo 配置 - Turborepo 构建缓存和任务编排"
+  },
+  "vben-admin.code-workspace": {
+    "description": "💻 工作区配置 - VS Code 多根工作区配置"
+  },
+  "vitest.config.ts": {
+    "description": "🧪 测试配置 - Vitest 单元测试配置"
+  }
+}
