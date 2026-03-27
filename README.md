@@ -48,6 +48,7 @@
 | 后端框架 | FastAPI (Python 3.11+) |
 | 数据库 | SQLite 3 |
 | 密码加密 | PBKDF2-SHA256 (260000 次迭代) |
+| 身份认证 | JWT HS256（自实现，无第三方依赖）|
 | 跨域处理 | FastAPI CORSMiddleware |
 
 ---
@@ -413,18 +414,68 @@ user 选择套餐
 
 ## 注意事项
 
-1. **Token 格式**：当前使用 mock token（`Bearer mock-token-{username}`），生产环境建议替换为标准 JWT。
-2. **数据库**：使用 SQLite，适合中小规模；大规模建议迁移至 PostgreSQL/MySQL。
-3. **密码安全**：PBKDF2-SHA256（260000 次迭代）哈希存储，旧明文密码登录时自动升级。
-4. **域名验证**：通过 DNS 解析检测可用性，依赖网络环境。
-5. **CORS**：通过环境变量 `ALLOWED_ORIGINS` 控制，生产环境勿保留 `*`。
-6. **操作日志**：静默记录，写入失败不影响主业务流程。
-7. **端口冲突**：后端启动时自动检测并终止占用同端口的旧进程，开发和生产均生效。
-8. **微信支付**：当前为演示模式，接入真实支付只需替换后端下单逻辑，前端零改动。
+1. **Token 安全**：使用 JWT HS256 签名，含过期时间（默认 60 分钟）。生产环境通过环境变量 `JWT_SECRET` 设置强随机密钥，`JWT_ACCESS_EXPIRE_MINUTES` 设置有效期。
+2. **登录限流**：同一 IP 1 分钟内失败 5 次触发锁定，锁定时长 5 分钟，防止暴力破解。
+3. **数据库**：使用 SQLite，适合中小规模；大规模建议迁移至 PostgreSQL/MySQL。
+4. **密码安全**：PBKDF2-SHA256（260000 次迭代）哈希存储，旧明文密码登录时自动升级。
+5. **域名验证**：通过 DNS 解析检测可用性，依赖网络环境。
+6. **CORS**：通过环境变量 `ALLOWED_ORIGINS` 控制，未配置时仅允许 localhost，生产环境必须显式设置。
+7. **操作日志**：静默记录，写入失败不影响主业务流程。
+8. **端口冲突**：后端启动时自动检测并终止占用同端口的旧进程，开发和生产均生效。
+9. **微信支付**：当前为演示模式，接入真实支付只需替换后端下单逻辑，前端零改动。
 
 ---
 
-## 浏览器兼容性
+## 安全机制
+
+### JWT 身份认证
+- 使用 `hmac` + `hashlib` 自实现 HS256 JWT，**零第三方依赖**
+- token 含用户名（`sub`）+ 过期时间（`exp`），默认有效期 60 分钟
+- 签名验证失败或过期均返回 401
+- refresh 接口宽限 24 小时，超出强制重新登录
+- 生产环境配置：
+```bash
+export JWT_SECRET=your_strong_random_secret_here
+export JWT_ACCESS_EXPIRE_MINUTES=30
+```
+
+### 登录限流
+- 同一 IP **1 分钟内失败 5 次**触发锁定
+- 锁定时长 **5 分钟**，响应 HTTP 429 并提示剩余等待秒数
+- 登录成功自动清除失败记录
+
+### CORS 配置
+- 未配置时默认只允许 `localhost:5173/5174`（开发环境）
+- 生产环境必须通过环境变量显式设置：
+```bash
+export ALLOWED_ORIGINS=https://your-frontend-domain.com
+```
+
+### 密码安全
+- PBKDF2-SHA256（260000 次迭代）哈希存储
+- 旧明文密码在首次登录时自动升级为哈希
+- 使用 `secrets.compare_digest` 防止时序攻击
+
+---
+
+## 生产环境部署建议
+
+```bash
+# 设置必要环境变量
+export JWT_SECRET=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+export JWT_ACCESS_EXPIRE_MINUTES=30
+export ALLOWED_ORIGINS=https://your-domain.com
+
+# 启动后端（生产不用 reload）
+uvicorn main:app --host 0.0.0.0 --port 5322
+```
+
+**强烈建议生产环境加上**：
+1. Nginx 反向代理 + HTTPS（Let's Encrypt 免费证书）
+2. Nginx `limit_req` 全局限流（防 DDoS）
+3. 定期备份 `site_pages.db` 文件
+
+---
 
 | 浏览器 | 支持 |
 |--------|------|
@@ -436,5 +487,5 @@ user 选择套餐
 
 ---
 
-> **项目版本**：2.1.0
+> **项目版本**：2.2.0
 > **最后更新**：2026 年 3 月

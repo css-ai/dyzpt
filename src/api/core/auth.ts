@@ -464,13 +464,12 @@ export async function verifyDomainApi(domain: string) {
 }
 
 /**
- * 刷新 accessToken（使用 refreshToken cookie 静默续期）
+ * 刷新 accessToken
+ * 将当前 accessToken 发给后端验证签名，返回新的 JWT token
  * @returns 新的 accessToken 及状态码
  */
 export async function refreshTokenApi() {
-  return baseRequestClient.post<AuthApi.RefreshTokenResult>('/auth/refresh', {
-    withCredentials: true,
-  });
+  return requestClient.post<AuthApi.RefreshTokenResult>('/auth/refresh', {});
 }
 
 /**

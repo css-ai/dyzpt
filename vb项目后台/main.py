@@ -1,29 +1,123 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import os
 import re
 import secrets
 import sqlite3
+import time
 import uuid
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Literal
 
-from fastapi import FastAPI, Header, HTTPException, Query
+from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = BASE_DIR / "site_pages.db"
 
-TOKEN_PREFIX = "Bearer mock-token-"
+# ==================== JWT 配置 ====================
+# 生产环境请通过环境变量 JWT_SECRET 设置强随机密钥，不要使用默认值
+JWT_SECRET: str = os.environ.get("JWT_SECRET", secrets.token_hex(32))
+JWT_ALGORITHM = "HS256"
+# accessToken 有效期（分钟），生产建议 30 分钟
+JWT_ACCESS_EXPIRE_MINUTES: int = int(os.environ.get("JWT_ACCESS_EXPIRE_MINUTES", "60"))
 
-# CORS 允许的源，生产环境通过环境变量 ALLOWED_ORIGINS 设置（逗号分隔）
-_raw_origins = os.environ.get("ALLOWED_ORIGINS", "*")
-ALLOWED_ORIGINS: list[str] = [o.strip() for o in _raw_origins.split(",") if o.strip()]
+
+def jwt_encode(payload: dict) -> str:
+    """生成 JWT token（HS256，无第三方依赖）。"""
+    import base64
+    header = base64.urlsafe_b64encode(json.dumps({"alg": "HS256", "typ": "JWT"}).encode()).rstrip(b"=").decode()
+    body = base64.urlsafe_b64encode(json.dumps(payload).encode()).rstrip(b"=").decode()
+    sig = hmac.new(JWT_SECRET.encode(), f"{header}.{body}".encode(), hashlib.sha256).digest()
+    sig_b64 = base64.urlsafe_b64encode(sig).rstrip(b"=").decode()
+    return f"{header}.{body}.{sig_b64}"
+
+
+def jwt_decode(token: str) -> dict:
+    """验证并解析 JWT token，失败抛出 HTTPException 401。"""
+    import base64
+    try:
+        parts = token.split(".")
+        if len(parts) != 3:
+            raise ValueError("格式错误")
+        header_b, body_b, sig_b = parts
+        expected_sig = hmac.new(
+            JWT_SECRET.encode(),
+            f"{header_b}.{body_b}".encode(),
+            hashlib.sha256,
+        ).digest()
+        actual_sig = base64.urlsafe_b64decode(sig_b + "==")
+        if not hmac.compare_digest(expected_sig, actual_sig):
+            raise ValueError("签名无效")
+        # 补充 padding 再解码
+        pad = lambda s: s + "=" * (-len(s) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(pad(body_b)).decode())
+        if payload.get("exp") and time.time() > payload["exp"]:
+            raise ValueError("Token 已过期")
+        return payload
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=f"Token 无效：{e}")
+
+
+def create_access_token(username: str) -> str:
+    """为指定用户名生成带过期时间的 accessToken。"""
+    exp = time.time() + JWT_ACCESS_EXPIRE_MINUTES * 60
+    return jwt_encode({"sub": username, "exp": exp})
+
+
+# ==================== 登录限流（内存，重启清零）====================
+# 结构：{ ip: {"count": int, "window_start": float, "locked_until": float} }
+_login_fail_map: dict[str, dict] = {}
+_LOGIN_MAX_FAIL = 5        # 窗口内最大失败次数
+_LOGIN_WINDOW_SEC = 60     # 滑动窗口（秒）
+_LOGIN_LOCK_SEC = 300      # 锁定时长（秒）
+
+
+def check_login_rate_limit(ip: str) -> None:
+    """登录失败频率检测，超出限制抛出 429。"""
+    now = time.time()
+    rec = _login_fail_map.get(ip)
+    if rec and now < rec.get("locked_until", 0):
+        remaining = int(rec["locked_until"] - now)
+        raise HTTPException(status_code=429, detail=f"登录失败过多，请 {remaining} 秒后重试")
+
+
+def record_login_fail(ip: str) -> None:
+    """记录一次登录失败，必要时触发锁定。"""
+    now = time.time()
+    rec = _login_fail_map.setdefault(ip, {"count": 0, "window_start": now, "locked_until": 0})
+    # 窗口过期则重置
+    if now - rec["window_start"] > _LOGIN_WINDOW_SEC:
+        rec["count"] = 0
+        rec["window_start"] = now
+    rec["count"] += 1
+    if rec["count"] >= _LOGIN_MAX_FAIL:
+        rec["locked_until"] = now + _LOGIN_LOCK_SEC
+
+
+def clear_login_fail(ip: str) -> None:
+    """登录成功后清除失败记录。"""
+    _login_fail_map.pop(ip, None)
+
+
+# ==================== CORS ====================
+# 生产环境通过环境变量 ALLOWED_ORIGINS 设置（逗号分隔），不设置则仅允许 localhost
+_raw_origins = os.environ.get("ALLOWED_ORIGINS", "")
+if _raw_origins.strip():
+    ALLOWED_ORIGINS: list[str] = [o.strip() for o in _raw_origins.split(",") if o.strip()]
+else:
+    # 未配置时默认只允许本地开发，生产部署必须显式设置 ALLOWED_ORIGINS
+    ALLOWED_ORIGINS: list[str] = [
+        "http://localhost:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5173",
+    ]
 
 _PBKDF2_ITERATIONS = 260_000
 
@@ -454,13 +548,18 @@ def get_user_by_username(username: str) -> dict[str, Any] | None:
 
 def get_current_user(authorization: str | None) -> dict[str, Any]:
     """从请求头 Authorization 中解析当前登录用户。
-    Token 格式：'Bearer mock-token-{username}'。
-    Token 缺失或格式错误时抛出 401；用户不存在时抛出 401。
+    Token 格式：'Bearer {jwt}'。
+    Token 缺失/签名错误/过期时抛出 401；用户不存在时抛出 401。
     """
-    if not authorization or not authorization.startswith(TOKEN_PREFIX):
+    if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="未登录或Token无效")
 
-    username = authorization.removeprefix(TOKEN_PREFIX)
+    token = authorization.removeprefix("Bearer ").strip()
+    payload = jwt_decode(token)  # 验证签名+过期，失败抛出 401
+    username = payload.get("sub")
+    if not username:
+        raise HTTPException(status_code=401, detail="Token 无效")
+
     user = get_user_by_username(username)
     if not user:
         raise HTTPException(status_code=401, detail="用户不存在")
@@ -1023,15 +1122,24 @@ def get_public_site_page(site_path: str) -> ApiEnvelope:
 
 
 @app.post("/api/auth/login", response_model=ApiEnvelope)
-def auth_login(payload: LoginPayload) -> ApiEnvelope:
+def auth_login(payload: LoginPayload, request: Request) -> ApiEnvelope:
     """用户登录接口。
+    - 同一 IP 1分钟内失败 5 次后锁定 5 分钟（防暴力破解）。
     - 验证用户名和密码，密码支持 PBKDF2 哈希和旧明文两种格式。
     - 登录成功后若检测到旧明文密码，自动升级为哈希存储。
-    - 返回 mock accessToken（格式：mock-token-{username}）。
+    - 返回真实 JWT accessToken（HS256，含过期时间）。
     """
+    client_ip = request.client.host if request.client else "unknown"
+    # 限流检测
+    check_login_rate_limit(client_ip)
+
     user = get_user_by_login(payload.username)
     if not user or not verify_password(payload.password, user["password"]):
+        record_login_fail(client_ip)
         return ApiEnvelope(code=10001, data=None, message="用户名或密码错误")
+
+    # 登录成功：清除失败记录
+    clear_login_fail(client_ip)
 
     # 若旧密码是明文，登录成功后升级为哈希
     if user["password"] == payload.password:
@@ -1041,9 +1149,10 @@ def auth_login(payload: LoginPayload) -> ApiEnvelope:
                 (hash_password(payload.password), payload.username),
             )
 
+    token = create_access_token(user["username"])
     return ApiEnvelope(
         code=0,
-        data={"accessToken": f"mock-token-{user['username']}"},
+        data={"accessToken": token},
         message="ok",
     )
 
@@ -1501,9 +1610,40 @@ def set_page_status(
 
 
 @app.post("/api/auth/refresh", response_model=ApiEnvelope)
-def auth_refresh() -> ApiEnvelope:
-    """刷新 accessToken 接口（mock 实现，始终返回固定 token，生产环境应替换为真实 JWT 刷新逻辑）。"""
-    return ApiEnvelope(code=0, data="mock-admin-token", message="ok")
+def auth_refresh(authorization: str | None = Header(default=None)) -> ApiEnvelope:
+    """刷新 accessToken 接口。
+    - 验证当前 token 合法性（允许已过期的 token 刷新，宽限 24 小时）。
+    - 返回新的 JWT accessToken。
+    """
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="未登录或Token无效")
+    token = authorization.removeprefix("Bearer ").strip()
+    # 刷新时允许过期 token（宽限 24 小时），只验证签名
+    import base64
+    try:
+        parts = token.split(".")
+        if len(parts) != 3:
+            raise ValueError("格式错误")
+        header_b, body_b, sig_b = parts
+        expected_sig = hmac.new(
+            JWT_SECRET.encode(), f"{header_b}.{body_b}".encode(), hashlib.sha256
+        ).digest()
+        actual_sig = base64.urlsafe_b64decode(sig_b + "==")
+        if not hmac.compare_digest(expected_sig, actual_sig):
+            raise HTTPException(status_code=401, detail="Token 签名无效")
+        pad = lambda s: s + "=" * (-len(s) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(pad(body_b)).decode())
+        # 宽限 24 小时
+        if payload.get("exp") and time.time() > payload["exp"] + 86400:
+            raise HTTPException(status_code=401, detail="Token 已过期，请重新登录")
+        username = payload.get("sub")
+        if not username or not get_user_by_username(username):
+            raise HTTPException(status_code=401, detail="用户不存在")
+    except (ValueError, Exception) as e:
+        raise HTTPException(status_code=401, detail=f"Token 无效：{e}")
+
+    new_token = create_access_token(username)
+    return ApiEnvelope(code=0, data=new_token, message="ok")
 
 
 @app.post("/api/auth/logout", response_model=ApiEnvelope)
