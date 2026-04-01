@@ -528,3 +528,130 @@ Chrome 之所以正常，多半是你本地已有登录态（token）+ 已生成
 
 如果你愿意，我下一步可以直接给你一版**“按你当前项目结构的具体改造清单（精确到文件和函数名）”**，你可以按清单一步一步改。
 
+---
+
+## 2026-04-01 FastAPI 后端生产安全加固更新（`vb项目后台/main.py`）
+
+> 目标：保持原有业务逻辑不变，仅做安全增强，满足互联网环境下生产可用基线。
+
+### 一、已完成的安全能力
+
+1. **全局接口限流（IP 维度）**
+- 新增全局安全中间件，基于 Redis 对每个 IP 做窗口计数限流。
+- 超限返回 `429`，并写入安全事件日志。
+
+2. **登录防暴力破解（Redis 持久化）**
+- 登录失败计数由内存改为 Redis（重启不丢失）。
+- 达到阈值自动锁定 IP（可配置锁定时长）。
+- 登录成功清除该 IP 的失败计数与锁定状态。
+
+3. **JWT 黑名单 + 强制下线**
+- JWT 增加 `jti / iat / ver` 字段。
+- 支持 token 黑名单（退出登录、刷新后旧 token 失效）。
+- 支持按用户 token 版本号强制下线。
+- 新增管理员接口：`POST /api/auth/users/{user_id}/force-logout`。
+
+4. **防 CC 攻击、防爬虫**
+- 增加 `IP + Path` 高频请求限制（CC 防护）。
+- 增加基础爬虫识别（UA 风险评分），高风险请求拦截并记录。
+
+5. **关闭危险调试接口（生产）**
+- `APP_ENV=production` 时关闭 `/docs`、`/redoc`、`/openapi.json`。
+
+6. **严格 CORS 配置**
+- 生产环境强制要求配置 `ALLOWED_ORIGINS`。
+- `methods/headers` 改为白名单，不再使用 `*`。
+
+7. **SQL 防注入优化**
+- 统一参数化查询。
+- 对日志查询等动态条件构建做固定模板拼接，避免注入风险。
+
+8. **生产环境安全配置**
+- 生产环境必须配置 `JWT_SECRET`，否则拒绝启动。
+- 新增 Host 白名单（`TrustedHostMiddleware`）。
+- 可配置 HTTPS 强制跳转（`HTTPSRedirectMiddleware`）。
+- 补充安全响应头（HSTS、X-Frame-Options、nosniff 等）。
+- 生产环境禁用热重载：`reload=not IS_PROD`。
+
+9. **日志与攻击记录**
+- 新增安全日志记录器（结构化日志）。
+- 新增 `security_events` 表记录攻击与拦截事件。
+
+10. **替换 SQLite 为生产数据库**
+- 数据库驱动从 SQLite 迁移为 PostgreSQL（`psycopg`）。
+- 新增连接包装器，尽量兼容原调用习惯，降低业务改造范围。
+
+---
+
+### 二、依赖更新（`vb项目后台/requirements.txt`）
+
+新增：
+- `psycopg[binary]==3.2.9`
+- `redis==5.2.1`
+
+---
+
+### 三、环境变量说明
+
+#### 1）最小必配（生产）
+- `APP_ENV=production`：运行环境标识；开启生产安全策略（如关闭 docs、禁用热重载等）。
+- `DATABASE_URL=postgresql://user:password@host:5432/dbname`：PostgreSQL 连接串；后端所有业务数据读写都依赖它。
+- `REDIS_URL=redis://host:6379/0`：Redis 连接地址；用于限流、登录防暴力计数、JWT 黑名单与会话安全控制。
+- `JWT_SECRET=强随机长密钥`：JWT 签名密钥；必须高强度且保密，用于防止 token 被伪造。
+- `ALLOWED_ORIGINS=https://你的前端域名`：CORS 允许来源；只允许白名单前端跨域调用接口。
+- `ALLOWED_HOSTS=你的后端域名,127.0.0.1,localhost`：Host 白名单；防止 Host Header 攻击与非法域名请求。
+
+#### 2）可选增强
+- `FORCE_HTTPS=1`：强制 HTTPS 跳转；避免明文 HTTP 传输风险。
+- `TRUST_PROXY_HEADERS=1`：信任反向代理头（如 X-Forwarded-For）；仅在 Nginx/网关可信链路下开启。
+- `GLOBAL_RATE_LIMIT=240`：全局限流阈值；单 IP 在窗口期内允许的最大请求数。
+- `GLOBAL_RATE_WINDOW_SEC=60`：全局限流时间窗口（秒）；与 `GLOBAL_RATE_LIMIT` 组合使用。
+- `CC_PATH_RATE_LIMIT=90`：CC 防护阈值；单 IP 对同一路径在窗口期内允许的最大请求数。
+- `CC_PATH_RATE_WINDOW_SEC=30`：CC 防护时间窗口（秒）；与 `CC_PATH_RATE_LIMIT` 组合使用。
+- `LOGIN_MAX_FAIL=5`：登录失败上限；超过后触发登录锁定。
+- `LOGIN_LOCK_SEC=300`：登录锁定时长（秒）；防止暴力破解持续尝试。
+
+---
+
+### 四、Windows 环境变量配置方式
+
+1. **临时生效（推荐本地调试）**
+- 在 PowerShell 会话中通过 `$env:KEY="VALUE"` 设置。
+- 仅当前终端生效。
+
+2. **永久生效（系统/用户环境变量）**
+- 在 Windows 系统环境变量中新增。
+- 需重开终端/IDE 后生效。
+
+> 说明：生产建议通过部署平台 Secret 或启动脚本注入敏感变量，不建议明文写入全局系统变量。
+
+---
+
+### 五、2026-04-01 补充：本地报错与修复记录（已验证）
+
+1. **报错：`无法解析导入 "redis"`**
+- 原因：当前 Python 环境未安装 `redis` 包。
+- 处理：安装 `redis==5.2.1`。
+- 验证：`python -c "import redis; print(redis.__version__)"` 输出正常。
+
+2. **报错：`无法解析导入 "psycopg"`**
+- 原因：当前 Python 环境未安装 `psycopg`。
+- 处理：安装 `psycopg[binary]==3.2.13`（Windows 当前环境可用版本）。
+- 说明：原文档中 `3.2.9` 在当前环境拉取失败，已按可安装版本修复。
+- 验证：`python -c "import psycopg; print(psycopg.__version__)"` 输出正常。
+
+3. **报错：`"sqlite3" 未定义`**
+- 原因：`main.py` 使用了 `sqlite3.Connection` / `sqlite3.connect`，但缺少 `import sqlite3`。
+- 处理：在 import 区补回 `import sqlite3`。
+- 验证：静态检查不再提示未定义。
+
+4. **报错：`"DB_PATH" 未定义`**
+- 原因：`get_conn()` 中调用 `sqlite3.connect(DB_PATH, ...)`，但变量定义缺失。
+- 处理：补回 `DB_PATH = BASE_DIR / "site_pages.db"`（用于兼容当前 SQLite 相关逻辑）。
+- 验证：`python -m py_compile main.py` 通过。
+
+5. **统一验证命令（推荐）**
+- 语法编译验证：`python -m py_compile main.py`
+- 依赖导入验证：
+  - `python -c "import redis; print(redis.__version__)"`
+  - `python -c "import psycopg; print(psycopg.__version__)"`

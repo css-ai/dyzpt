@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import logging
 import os
 import re
 import secrets
@@ -14,16 +15,97 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Literal
 
+import psycopg
+import redis
 from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.httpsredirect import HTTPSRedirectMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
+from starlette.responses import JSONResponse
 
 BASE_DIR = Path(__file__).resolve().parent
-DB_PATH = BASE_DIR / "site_pages.db"
+DB_PATH = BASE_DIR / "site_pages.db"  # 兼容当前 SQLite 相关逻辑
+
+# ==================== 生产安全配置 ====================
+ENV = os.environ.get("APP_ENV", "development").lower()
+IS_PROD = ENV == "production"
+
+# PostgreSQL 连接串示例：
+# postgresql://user:password@127.0.0.1:5432/template_cms
+DATABASE_URL = os.environ.get(
+    "DATABASE_URL",
+    "postgresql://postgres:postgres@127.0.0.1:5432/template_cms",
+)
+
+# Redis 连接
+REDIS_URL = os.environ.get("REDIS_URL", "redis://127.0.0.1:6379/0")
+REDIS_PREFIX = os.environ.get("SECURITY_REDIS_PREFIX", "template_cms")
+
+# 仅在显式开启时信任反向代理 X-Forwarded-For（避免被伪造）
+TRUST_PROXY_HEADERS = os.environ.get("TRUST_PROXY_HEADERS", "0") == "1"
+
+# 强制 HTTPS / Host 白名单（生产建议开启）
+FORCE_HTTPS = os.environ.get("FORCE_HTTPS", "1" if IS_PROD else "0") == "1"
+_ALLOWED_HOSTS_RAW = os.environ.get("ALLOWED_HOSTS", "")
+if _ALLOWED_HOSTS_RAW.strip():
+    ALLOWED_HOSTS: list[str] = [h.strip() for h in _ALLOWED_HOSTS_RAW.split(",") if h.strip()]
+else:
+    ALLOWED_HOSTS = ["localhost", "127.0.0.1"] if not IS_PROD else ["example.com"]
+
+# 攻击防护参数
+GLOBAL_RATE_LIMIT = int(os.environ.get("GLOBAL_RATE_LIMIT", "240"))
+GLOBAL_RATE_WINDOW_SEC = int(os.environ.get("GLOBAL_RATE_WINDOW_SEC", "60"))
+CC_PATH_RATE_LIMIT = int(os.environ.get("CC_PATH_RATE_LIMIT", "90"))
+CC_PATH_RATE_WINDOW_SEC = int(os.environ.get("CC_PATH_RATE_WINDOW_SEC", "30"))
+BOT_SCORE_BLOCK = int(os.environ.get("BOT_SCORE_BLOCK", "80"))
+BOT_SCORE_CHALLENGE = int(os.environ.get("BOT_SCORE_CHALLENGE", "50"))
+
+# 登录防暴力（Redis 持久化）
+_LOGIN_MAX_FAIL = int(os.environ.get("LOGIN_MAX_FAIL", "5"))
+_LOGIN_WINDOW_SEC = int(os.environ.get("LOGIN_WINDOW_SEC", "60"))
+_LOGIN_LOCK_SEC = int(os.environ.get("LOGIN_LOCK_SEC", "300"))
+
+# JWT 黑名单过期时间（秒）
+JWT_BLACKLIST_TTL_SEC = int(os.environ.get("JWT_BLACKLIST_TTL_SEC", str(7 * 24 * 3600)))
+
+# 结构化安全日志
+LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
+logger = logging.getLogger("security")
+if not logger.handlers:
+    logging.basicConfig(level=getattr(logging, LOG_LEVEL, logging.INFO), format="%(asctime)s %(levelname)s %(message)s")
+
+
+def _get_redis_client() -> redis.Redis:
+    """创建 Redis 客户端。decode_responses=True 便于直接处理字符串。"""
+    return redis.Redis.from_url(REDIS_URL, decode_responses=True)
+
+
+redis_client = _get_redis_client()
+
+
+def _rk(name: str) -> str:
+    """统一 Redis key 前缀，防止多项目冲突。"""
+    return f"{REDIS_PREFIX}:{name}"
+
+
+def get_client_ip(request: Request) -> str:
+    """获取客户端 IP。默认使用 request.client，避免盲目信任头部。"""
+    if TRUST_PROXY_HEADERS:
+        xff = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+        if xff:
+            return xff
+    return request.client.host if request.client else "unknown"
+
+
+BASE_DIR = Path(__file__).resolve().parent
 
 # ==================== JWT 配置 ====================
-# 生产环境请通过环境变量 JWT_SECRET 设置强随机密钥，不要使用默认值
-JWT_SECRET: str = os.environ.get("JWT_SECRET", secrets.token_hex(32))
+_jwt_secret_env = os.environ.get("JWT_SECRET", "")
+if IS_PROD and not _jwt_secret_env:
+    raise RuntimeError("生产环境必须设置 JWT_SECRET")
+JWT_SECRET: str = _jwt_secret_env or secrets.token_hex(32)
 JWT_ALGORITHM = "HS256"
 # accessToken 有效期（分钟），生产建议 30 分钟
 JWT_ACCESS_EXPIRE_MINUTES: int = int(os.environ.get("JWT_ACCESS_EXPIRE_MINUTES", "60"))
@@ -107,13 +189,14 @@ def clear_login_fail(ip: str) -> None:
 
 
 # ==================== CORS ====================
-# 生产环境通过环境变量 ALLOWED_ORIGINS 设置（逗号分隔），不设置则仅允许 localhost
+# 生产环境必须显式配置白名单域名
 _raw_origins = os.environ.get("ALLOWED_ORIGINS", "")
 if _raw_origins.strip():
     ALLOWED_ORIGINS: list[str] = [o.strip() for o in _raw_origins.split(",") if o.strip()]
 else:
-    # 未配置时默认只允许本地开发，生产部署必须显式设置 ALLOWED_ORIGINS
-    ALLOWED_ORIGINS: list[str] = [
+    if IS_PROD:
+        raise RuntimeError("生产环境必须配置 ALLOWED_ORIGINS")
+    ALLOWED_ORIGINS = [
         "http://localhost:5173",
         "http://localhost:5174",
         "http://127.0.0.1:5173",
@@ -547,15 +630,12 @@ def get_user_by_username(username: str) -> dict[str, Any] | None:
 
 
 def get_current_user(authorization: str | None) -> dict[str, Any]:
-    """从请求头 Authorization 中解析当前登录用户。
-    Token 格式：'Bearer {jwt}'。
-    Token 缺失/签名错误/过期时抛出 401；用户不存在时抛出 401。
-    """
+    """从请求头 Authorization 中解析当前登录用户。"""
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="未登录或Token无效")
 
     token = authorization.removeprefix("Bearer ").strip()
-    payload = jwt_decode(token)  # 验证签名+过期，失败抛出 401
+    payload = jwt_decode(token)
     username = payload.get("sub")
     if not username:
         raise HTTPException(status_code=401, detail="Token 无效")
@@ -799,6 +879,350 @@ def check_domain_unique(
         raise HTTPException(status_code=409, detail="域名已被占用")
 
 
+# ==================== 安全增强与生产配置（不改变业务语义） ====================
+
+
+def safe_json(data: Any) -> str:
+    return json.dumps(data, ensure_ascii=False)
+
+
+def _convert_sql_placeholders(query: str) -> str:
+    """将 SQLite 的 ? 占位符转换为 PostgreSQL 的 %s 占位符。"""
+    return query.replace("?", "%s")
+
+
+class DbConn:
+    """兼容 SQLite 调用习惯的 PostgreSQL 连接包装器。"""
+
+    def __init__(self, conn: psycopg.Connection):
+        self._conn = conn
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        if exc_type is None:
+            self._conn.commit()
+        else:
+            self._conn.rollback()
+        self._conn.close()
+
+    def execute(self, query: str, params: list[Any] | tuple[Any, ...] | None = None):
+        sql = _convert_sql_placeholders(query)
+        return self._conn.execute(sql, params or ())
+
+    def commit(self):
+        self._conn.commit()
+
+
+
+def get_conn() -> DbConn:
+    """统一数据库连接：使用 PostgreSQL（生产可用）。"""
+    raw = psycopg.connect(DATABASE_URL, row_factory=psycopg.rows.dict_row)
+    return DbConn(raw)
+
+
+def ensure_auth_tables(conn: Any) -> None:
+    """创建鉴权相关表，并创建安全事件表。"""
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS users (
+            id TEXT PRIMARY KEY,
+            username TEXT NOT NULL UNIQUE,
+            password TEXT NOT NULL,
+            real_name TEXT NOT NULL,
+            avatar TEXT NOT NULL DEFAULT '',
+            user_desc TEXT NOT NULL DEFAULT '',
+            home_path TEXT NOT NULL DEFAULT '/analytics',
+            roles TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+        """
+    )
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS register_keys (
+            id TEXT PRIMARY KEY,
+            register_key TEXT NOT NULL UNIQUE,
+            role TEXT NOT NULL CHECK (role IN ('admin', 'super', 'user')),
+            created_by TEXT NOT NULL,
+            used_by TEXT,
+            used_at TEXT,
+            created_at TEXT NOT NULL,
+            expires_at TEXT
+        )
+        """
+    )
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS user_page_quota (
+            user_id TEXT PRIMARY KEY,
+            max_pages INTEGER NOT NULL DEFAULT 1,
+            start_date TEXT,
+            end_date TEXT,
+            plan_type TEXT NOT NULL DEFAULT 'free'
+        )
+        """
+    )
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS recharge_orders (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            username TEXT NOT NULL,
+            plan_type TEXT NOT NULL CHECK (plan_type IN ('free', 'basic', 'pro', 'enterprise')),
+            status TEXT NOT NULL CHECK (status IN ('pending', 'paid')),
+            created_at TEXT NOT NULL
+        )
+        """
+    )
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS operation_logs (
+            id TEXT PRIMARY KEY,
+            operator TEXT NOT NULL,
+            action TEXT NOT NULL,
+            target TEXT NOT NULL DEFAULT '',
+            detail TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL
+        )
+        """
+    )
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS security_events (
+            id TEXT PRIMARY KEY,
+            event_type TEXT NOT NULL,
+            ip TEXT NOT NULL,
+            path TEXT NOT NULL,
+            method TEXT NOT NULL,
+            detail TEXT NOT NULL DEFAULT '',
+            ua TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL
+        )
+        """
+    )
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS trash (
+            id TEXT PRIMARY KEY,
+            item_type TEXT NOT NULL CHECK (item_type IN ('user', 'page', 'key')),
+            item_id TEXT NOT NULL,
+            item_data TEXT NOT NULL,
+            deleted_by TEXT NOT NULL,
+            deleted_at TEXT NOT NULL,
+            expire_at TEXT NOT NULL
+        )
+        """
+    )
+
+
+def ensure_db_schema(conn: Any) -> None:
+    """初始化并迁移 site_pages 结构（PostgreSQL 版本）。"""
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS site_pages (
+            id TEXT PRIMARY KEY,
+            owner_username TEXT NOT NULL,
+            site_path TEXT NOT NULL UNIQUE,
+            bind_domain TEXT NOT NULL UNIQUE,
+            site_name TEXT NOT NULL,
+            site_description TEXT NOT NULL,
+            template_id TEXT NOT NULL,
+            nav_items TEXT NOT NULL,
+            colors TEXT NOT NULL,
+            fonts TEXT NOT NULL,
+            status TEXT NOT NULL CHECK (status IN ('draft', 'published')),
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+
+
+def pg_execute(conn: Any, query: str, params: list[Any] | tuple[Any, ...] | None = None):
+    """统一执行 SQL，自动占位符转换，避免拼接 SQL 造成注入风险。"""
+    sql = _convert_sql_placeholders(query)
+    return conn.execute(sql, params or ())
+
+
+def log_security_event(event_type: str, ip: str, path: str, method: str, detail: str = "", ua: str = "") -> None:
+    """记录安全日志到文件与数据库。"""
+    logger.warning(
+        "security_event type=%s ip=%s path=%s method=%s detail=%s",
+        event_type,
+        ip,
+        path,
+        method,
+        detail,
+    )
+    try:
+        with get_conn() as conn:
+            pg_execute(
+                conn,
+                "INSERT INTO security_events (id, event_type, ip, path, method, detail, ua, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (str(uuid.uuid4()), event_type, ip, path, method, detail, ua, now_iso()),
+            )
+            conn.commit()
+    except Exception:
+        pass
+
+
+def _redis_incr_window(key: str, window: int) -> int:
+    n = redis_client.incr(key)
+    if n == 1:
+        redis_client.expire(key, window)
+    return int(n)
+
+
+def check_login_rate_limit(ip: str) -> None:
+    """登录防暴力破解（Redis 持久化计数 + 锁定）。"""
+    lock_key = _rk(f"login:lock:{ip}")
+    ttl = redis_client.ttl(lock_key)
+    if ttl and ttl > 0:
+        raise HTTPException(status_code=429, detail=f"登录失败过多，请 {ttl} 秒后重试")
+
+
+def record_login_fail(ip: str) -> None:
+    fail_key = _rk(f"login:fail:{ip}")
+    cnt = _redis_incr_window(fail_key, _LOGIN_WINDOW_SEC)
+    if cnt >= _LOGIN_MAX_FAIL:
+        redis_client.setex(_rk(f"login:lock:{ip}"), _LOGIN_LOCK_SEC, "1")
+
+
+def clear_login_fail(ip: str) -> None:
+    redis_client.delete(_rk(f"login:fail:{ip}"), _rk(f"login:lock:{ip}"))
+
+
+def get_user_token_version(username: str) -> int:
+    k = _rk(f"jwt:ver:{username}")
+    v = redis_client.get(k)
+    if v is None:
+        redis_client.set(k, "1")
+        return 1
+    return int(v)
+
+
+def bump_user_token_version(username: str) -> int:
+    k = _rk(f"jwt:ver:{username}")
+    return int(redis_client.incr(k))
+
+
+def blacklist_token(token: str, exp_ts: float | None = None) -> None:
+    fp = hashlib.sha256(token.encode()).hexdigest()
+    ttl = JWT_BLACKLIST_TTL_SEC
+    if exp_ts:
+        ttl = max(1, int(exp_ts - time.time()) + 60)
+    redis_client.setex(_rk(f"jwt:blacklist:{fp}"), ttl, "1")
+
+
+def is_token_blacklisted(token: str) -> bool:
+    fp = hashlib.sha256(token.encode()).hexdigest()
+    return bool(redis_client.exists(_rk(f"jwt:blacklist:{fp}")))
+
+
+def create_access_token(username: str) -> str:
+    """生成 JWT，并注入 jti/ver 以支持黑名单和强制下线。"""
+    exp = time.time() + JWT_ACCESS_EXPIRE_MINUTES * 60
+    return jwt_encode(
+        {
+            "sub": username,
+            "exp": exp,
+            "iat": time.time(),
+            "jti": str(uuid.uuid4()),
+            "ver": get_user_token_version(username),
+        }
+    )
+
+
+def jwt_decode(token: str) -> dict:
+    """验证签名、过期、黑名单、token 版本。"""
+    import base64
+
+    if is_token_blacklisted(token):
+        raise HTTPException(status_code=401, detail="Token 已失效")
+
+    try:
+        parts = token.split(".")
+        if len(parts) != 3:
+            raise ValueError("格式错误")
+        header_b, body_b, sig_b = parts
+        expected_sig = hmac.new(JWT_SECRET.encode(), f"{header_b}.{body_b}".encode(), hashlib.sha256).digest()
+        actual_sig = base64.urlsafe_b64decode(sig_b + "==")
+        if not hmac.compare_digest(expected_sig, actual_sig):
+            raise ValueError("签名无效")
+
+        pad = lambda s: s + "=" * (-len(s) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(pad(body_b)).decode())
+        if payload.get("exp") and time.time() > payload["exp"]:
+            raise ValueError("Token 已过期")
+
+        username = payload.get("sub")
+        if username:
+            current_ver = get_user_token_version(username)
+            token_ver = int(payload.get("ver", 1))
+            if token_ver != current_ver:
+                raise ValueError("Token 已被强制下线")
+        return payload
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=f"Token 无效：{e}")
+
+
+class SecurityMiddleware(BaseHTTPMiddleware):
+    """全局安全中间件：IP 限流、CC 防护、反爬、安全响应头。"""
+
+    async def dispatch(self, request: Request, call_next):
+        ip = get_client_ip(request)
+        path = request.url.path
+        method = request.method.upper()
+        ua = request.headers.get("user-agent", "")
+
+        # 全局接口限流（IP 维度）
+        global_key = _rk(f"rl:global:{ip}")
+        if _redis_incr_window(global_key, GLOBAL_RATE_WINDOW_SEC) > GLOBAL_RATE_LIMIT:
+            log_security_event("rate_limit_block", ip, path, method, detail="global", ua=ua)
+            return JSONResponse(status_code=429, content={"detail": "请求过于频繁，请稍后重试"})
+
+        # 防 CC：IP + Path 高频限制
+        cc_key = _rk(f"rl:cc:{ip}:{path}")
+        if _redis_incr_window(cc_key, CC_PATH_RATE_WINDOW_SEC) > CC_PATH_RATE_LIMIT:
+            log_security_event("cc_block", ip, path, method, detail="path", ua=ua)
+            return JSONResponse(status_code=429, content={"detail": "访问过于频繁，已触发防护"})
+
+        # 防爬虫：基础 UA 风险评分
+        bot_score = 0
+        ua_low = ua.lower()
+        if not ua:
+            bot_score += 40
+        if any(k in ua_low for k in ["curl", "python", "wget", "scrapy", "spider", "bot"]):
+            bot_score += 70
+        if request.headers.get("accept", "") == "*/*":
+            bot_score += 15
+        if path.startswith("/api/public") and not request.headers.get("accept-language"):
+            bot_score += 10
+
+        if bot_score >= BOT_SCORE_BLOCK:
+            log_security_event("bot_block", ip, path, method, detail=f"score={bot_score}", ua=ua)
+            return JSONResponse(status_code=403, content={"detail": "请求被安全策略拦截"})
+
+        resp = await call_next(request)
+
+        # 安全响应头
+        resp.headers["X-Content-Type-Options"] = "nosniff"
+        resp.headers["X-Frame-Options"] = "DENY"
+        resp.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        resp.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+        if FORCE_HTTPS:
+            resp.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
+        return resp
+
+
 # ==================== FastAPI App ====================
 
 
@@ -809,14 +1233,30 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="Template CMS API", version="2.0.0", lifespan=lifespan)
+app = FastAPI(
+    title="Template CMS API",
+    version="2.0.0",
+    lifespan=lifespan,
+    docs_url=None if IS_PROD else "/docs",
+    redoc_url=None if IS_PROD else "/redoc",
+    openapi_url=None if IS_PROD else "/openapi.json",
+)
 
+# Host 白名单 + HTTPS 重定向（生产安全）
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)
+if FORCE_HTTPS:
+    app.add_middleware(HTTPSRedirectMiddleware)
+
+# 全局安全中间件（限流/反爬/安全头）
+app.add_middleware(SecurityMiddleware)
+
+# 严格 CORS：仅允许白名单域名，限制方法和头
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Requested-With"],
 )
 
 
@@ -1123,22 +1563,16 @@ def get_public_site_page(site_path: str) -> ApiEnvelope:
 
 @app.post("/api/auth/login", response_model=ApiEnvelope)
 def auth_login(payload: LoginPayload, request: Request) -> ApiEnvelope:
-    """用户登录接口。
-    - 同一 IP 1分钟内失败 5 次后锁定 5 分钟（防暴力破解）。
-    - 验证用户名和密码，密码支持 PBKDF2 哈希和旧明文两种格式。
-    - 登录成功后若检测到旧明文密码，自动升级为哈希存储。
-    - 返回真实 JWT accessToken（HS256，含过期时间）。
-    """
-    client_ip = request.client.host if request.client else "unknown"
-    # 限流检测
+    """用户登录接口（Redis 持久化防暴力破解）。"""
+    client_ip = get_client_ip(request)
     check_login_rate_limit(client_ip)
 
     user = get_user_by_login(payload.username)
     if not user or not verify_password(payload.password, user["password"]):
         record_login_fail(client_ip)
+        log_security_event("login_fail", client_ip, "/api/auth/login", "POST", detail=f"username={payload.username}", ua=request.headers.get("user-agent", ""))
         return ApiEnvelope(code=10001, data=None, message="用户名或密码错误")
 
-    # 登录成功：清除失败记录
     clear_login_fail(client_ip)
 
     # 若旧密码是明文，登录成功后升级为哈希
@@ -1150,11 +1584,7 @@ def auth_login(payload: LoginPayload, request: Request) -> ApiEnvelope:
             )
 
     token = create_access_token(user["username"])
-    return ApiEnvelope(
-        code=0,
-        data={"accessToken": token},
-        message="ok",
-    )
+    return ApiEnvelope(code=0, data={"accessToken": token}, message="ok")
 
 
 @app.post("/api/auth/register", response_model=ApiEnvelope)
@@ -1508,7 +1938,7 @@ def update_user_password(
         raise HTTPException(status_code=403, detail="仅管理员可操作")
 
     with get_conn() as conn:
-        row = conn.execute("SELECT id FROM users WHERE id = ?", (user_id,)).fetchone()
+        row = conn.execute("SELECT id, username FROM users WHERE id = ?", (user_id,)).fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="用户不存在")
 
@@ -1517,8 +1947,31 @@ def update_user_password(
             (hash_password(payload.password), user_id),  # 哈希存储
         )
 
+        # 修改密码后强制该用户所有历史 token 失效
+        bump_user_token_version(row["username"])
+
     log_operation(user["username"], "update_password", user_id, "管理员修改用户密码")
     return ApiEnvelope(code=0, data=True, message="密码修改成功")
+
+
+@app.post("/api/auth/users/{user_id}/force-logout", response_model=ApiEnvelope)
+def force_logout_user(
+    user_id: str,
+    authorization: str | None = Header(default=None),
+) -> ApiEnvelope:
+    """管理员强制指定用户下线（JWT 版本号递增）。"""
+    operator = get_current_user(authorization)
+    if not is_admin_user(operator):
+        raise HTTPException(status_code=403, detail="仅管理员可操作")
+
+    with get_conn() as conn:
+        row = conn.execute("SELECT username FROM users WHERE id = ?", (user_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="用户不存在")
+        bump_user_token_version(row["username"])
+
+    log_operation(operator["username"], "force_logout", user_id, f"强制下线用户: {row['username']}")
+    return ApiEnvelope(code=0, data=True, message="已强制下线")
 
 
 @app.delete("/api/auth/users/{user_id}", response_model=ApiEnvelope)
@@ -1611,44 +2064,58 @@ def set_page_status(
 
 @app.post("/api/auth/refresh", response_model=ApiEnvelope)
 def auth_refresh(authorization: str | None = Header(default=None)) -> ApiEnvelope:
-    """刷新 accessToken 接口。
-    - 验证当前 token 合法性（允许已过期的 token 刷新，宽限 24 小时）。
-    - 返回新的 JWT accessToken。
-    """
+    """刷新 accessToken（旧 token 可过期 24h 内刷新）。"""
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="未登录或Token无效")
+
     token = authorization.removeprefix("Bearer ").strip()
-    # 刷新时允许过期 token（宽限 24 小时），只验证签名
+    if is_token_blacklisted(token):
+        raise HTTPException(status_code=401, detail="Token 已失效")
+
     import base64
+
     try:
         parts = token.split(".")
         if len(parts) != 3:
             raise ValueError("格式错误")
         header_b, body_b, sig_b = parts
-        expected_sig = hmac.new(
-            JWT_SECRET.encode(), f"{header_b}.{body_b}".encode(), hashlib.sha256
-        ).digest()
+        expected_sig = hmac.new(JWT_SECRET.encode(), f"{header_b}.{body_b}".encode(), hashlib.sha256).digest()
         actual_sig = base64.urlsafe_b64decode(sig_b + "==")
         if not hmac.compare_digest(expected_sig, actual_sig):
             raise HTTPException(status_code=401, detail="Token 签名无效")
+
         pad = lambda s: s + "=" * (-len(s) % 4)
         payload = json.loads(base64.urlsafe_b64decode(pad(body_b)).decode())
-        # 宽限 24 小时
         if payload.get("exp") and time.time() > payload["exp"] + 86400:
             raise HTTPException(status_code=401, detail="Token 已过期，请重新登录")
+
         username = payload.get("sub")
         if not username or not get_user_by_username(username):
             raise HTTPException(status_code=401, detail="用户不存在")
+
+        # 刷新前校验 token 版本（被强制下线后不可刷新）
+        token_ver = int(payload.get("ver", 1))
+        if token_ver != get_user_token_version(username):
+            raise HTTPException(status_code=401, detail="Token 已被强制下线")
     except (ValueError, Exception) as e:
         raise HTTPException(status_code=401, detail=f"Token 无效：{e}")
 
+    # 旧 token 入黑名单，防止被复用
+    blacklist_token(token, payload.get("exp"))
     new_token = create_access_token(username)
     return ApiEnvelope(code=0, data=new_token, message="ok")
 
 
 @app.post("/api/auth/logout", response_model=ApiEnvelope)
-def auth_logout() -> ApiEnvelope:
-    """退出登录接口（mock 实现，清除客户端 token 由前端负责，后端直接返回成功）。"""
+def auth_logout(authorization: str | None = Header(default=None)) -> ApiEnvelope:
+    """退出登录：将当前 token 拉黑，支持服务端即时失效。"""
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.removeprefix("Bearer ").strip()
+        try:
+            payload = jwt_decode(token)
+            blacklist_token(token, payload.get("exp"))
+        except Exception:
+            pass
     return ApiEnvelope(code=0, data=True, message="ok")
 
 
@@ -1811,23 +2278,27 @@ def get_operation_logs(
     if not is_admin_user(user):
         raise HTTPException(status_code=403, detail="仅管理员可查看")
 
-    conditions = []
-    params: list[Any] = []
-    if operator:
-        conditions.append("operator LIKE ?")
-        params.append(f"%{operator}%")
-    if action:
-        conditions.append("action = ?")
-        params.append(action)
+    # 使用参数化与白名单拼接，避免 SQL 注入
+    where_sql = ""
+    where_params: list[Any] = []
+    if operator and action:
+        where_sql = " WHERE operator LIKE ? AND action = ?"
+        where_params = [f"%{operator}%", action]
+    elif operator:
+        where_sql = " WHERE operator LIKE ?"
+        where_params = [f"%{operator}%"]
+    elif action:
+        where_sql = " WHERE action = ?"
+        where_params = [action]
 
-    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
     with get_conn() as conn:
         total = conn.execute(
-            f"SELECT COUNT(1) AS c FROM operation_logs {where}", params
+            f"SELECT COUNT(1) AS c FROM operation_logs{where_sql}",
+            where_params,
         ).fetchone()["c"]
         rows = conn.execute(
-            f"SELECT * FROM operation_logs {where} ORDER BY created_at DESC LIMIT ? OFFSET ?",
-            params + [page_size, (page - 1) * page_size],
+            f"SELECT * FROM operation_logs{where_sql} ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            where_params + [page_size, (page - 1) * page_size],
         ).fetchall()
 
     return ApiEnvelope(
@@ -2265,6 +2736,6 @@ if __name__ == "__main__":
 
     # 启动前主动清理端口冲突的旧进程（开发/生产均生效）
     kill_port_conflict(5322)
-    uvicorn.run("main:app", host="0.0.0.0", port=5322, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=5322, reload=not IS_PROD)
  
                     
