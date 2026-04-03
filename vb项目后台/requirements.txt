@@ -1,7 +1,7 @@
+# FastAPI 后端依赖
 fastapi==0.116.1
 uvicorn==0.35.0
 pydantic==2.12.5
 psutil==6.1.1
-psycopg[binary]==3.2.9
+pymysql==1.1.1
 redis==5.2.1
-

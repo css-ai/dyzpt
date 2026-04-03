@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import html
 import json
 import logging
 import os
@@ -14,8 +15,9 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import unquote, urlparse
 
-import psycopg
+import pymysql
 import redis
 from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -32,16 +34,18 @@ DB_PATH = BASE_DIR / "site_pages.db"  # 兼容当前 SQLite 相关逻辑
 ENV = os.environ.get("APP_ENV", "development").lower()
 IS_PROD = ENV == "production"
 
-# PostgreSQL 连接串示例：
-# postgresql://user:password@127.0.0.1:5432/template_cms
+# MySQL 连接串示例：
+# mysql://user:password@127.0.0.1:3306/template_cms
 DATABASE_URL = os.environ.get(
     "DATABASE_URL",
-    "postgresql://postgres:postgres@127.0.0.1:5432/template_cms",
+    "mysql://root:123456@127.0.0.1:3306/template_cms",
 )
 
 # Redis 连接
 REDIS_URL = os.environ.get("REDIS_URL", "redis://127.0.0.1:6379/0")
 REDIS_PREFIX = os.environ.get("SECURITY_REDIS_PREFIX", "template_cms")
+REDIS_CONNECT_TIMEOUT = float(os.environ.get("REDIS_CONNECT_TIMEOUT", "0.3"))
+REDIS_SOCKET_TIMEOUT = float(os.environ.get("REDIS_SOCKET_TIMEOUT", "0.3"))
 
 # 仅在显式开启时信任反向代理 X-Forwarded-For（避免被伪造）
 TRUST_PROXY_HEADERS = os.environ.get("TRUST_PROXY_HEADERS", "0") == "1"
@@ -55,10 +59,10 @@ else:
     ALLOWED_HOSTS = ["localhost", "127.0.0.1"] if not IS_PROD else ["example.com"]
 
 # 攻击防护参数
-GLOBAL_RATE_LIMIT = int(os.environ.get("GLOBAL_RATE_LIMIT", "240"))
+GLOBAL_RATE_LIMIT = int(os.environ.get("GLOBAL_RATE_LIMIT", "180"))
 GLOBAL_RATE_WINDOW_SEC = int(os.environ.get("GLOBAL_RATE_WINDOW_SEC", "60"))
-CC_PATH_RATE_LIMIT = int(os.environ.get("CC_PATH_RATE_LIMIT", "90"))
-CC_PATH_RATE_WINDOW_SEC = int(os.environ.get("CC_PATH_RATE_WINDOW_SEC", "30"))
+CC_PATH_RATE_LIMIT = int(os.environ.get("CC_PATH_RATE_LIMIT", "60"))
+CC_PATH_RATE_WINDOW_SEC = int(os.environ.get("CC_PATH_RATE_WINDOW_SEC", "10"))
 BOT_SCORE_BLOCK = int(os.environ.get("BOT_SCORE_BLOCK", "80"))
 BOT_SCORE_CHALLENGE = int(os.environ.get("BOT_SCORE_CHALLENGE", "50"))
 
@@ -79,7 +83,12 @@ if not logger.handlers:
 
 def _get_redis_client() -> redis.Redis:
     """创建 Redis 客户端。decode_responses=True 便于直接处理字符串。"""
-    return redis.Redis.from_url(REDIS_URL, decode_responses=True)
+    return redis.Redis.from_url(
+        REDIS_URL,
+        decode_responses=True,
+        socket_connect_timeout=REDIS_CONNECT_TIMEOUT,
+        socket_timeout=REDIS_SOCKET_TIMEOUT,
+    )
 
 
 redis_client = _get_redis_client()
@@ -202,7 +211,7 @@ else:
         "http://127.0.0.1:5173",
     ]
 
-_PBKDF2_ITERATIONS = 260_000
+_PBKDF2_ITERATIONS = 310_000
 
 
 def hash_password(plain: str) -> str:
@@ -425,15 +434,15 @@ def ensure_auth_tables(conn: sqlite3.Connection) -> None:
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS users (
-            id TEXT PRIMARY KEY,
-            username TEXT NOT NULL UNIQUE,
-            password TEXT NOT NULL,
-            real_name TEXT NOT NULL,
-            avatar TEXT NOT NULL DEFAULT '',
-            user_desc TEXT NOT NULL DEFAULT '',
-            home_path TEXT NOT NULL DEFAULT '/analytics',
+            id VARCHAR(64) PRIMARY KEY,
+            username VARCHAR(64) NOT NULL UNIQUE,
+            password VARCHAR(255) NOT NULL,
+            real_name VARCHAR(100) NOT NULL,
+            avatar VARCHAR(500) NOT NULL,
+            user_desc TEXT NOT NULL,
+            home_path VARCHAR(255) NOT NULL,
             roles TEXT NOT NULL,
-            created_at TEXT NOT NULL
+            created_at VARCHAR(40) NOT NULL
         )
         """
     )
@@ -441,8 +450,8 @@ def ensure_auth_tables(conn: sqlite3.Connection) -> None:
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS register_keys (
-            id TEXT PRIMARY KEY,
-            register_key TEXT NOT NULL UNIQUE,
+            id VARCHAR(64) PRIMARY KEY,
+            register_key VARCHAR(255) NOT NULL UNIQUE,
             role TEXT NOT NULL CHECK (role IN ('admin', 'super', 'user')),
             created_by TEXT NOT NULL,
             used_by TEXT,
@@ -455,7 +464,7 @@ def ensure_auth_tables(conn: sqlite3.Connection) -> None:
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS user_page_quota (
-            user_id TEXT PRIMARY KEY,
+            user_id VARCHAR(64) PRIMARY KEY,
             max_pages INTEGER NOT NULL DEFAULT 1,
             start_date TEXT,
             end_date TEXT
@@ -466,7 +475,7 @@ def ensure_auth_tables(conn: sqlite3.Connection) -> None:
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS recharge_orders (
-            id TEXT PRIMARY KEY,
+            id VARCHAR(64) PRIMARY KEY,
             user_id TEXT NOT NULL,
             username TEXT NOT NULL,
             plan_type TEXT NOT NULL CHECK (plan_type IN ('free', 'basic', 'pro', 'enterprise')),
@@ -480,7 +489,7 @@ def ensure_auth_tables(conn: sqlite3.Connection) -> None:
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS operation_logs (
-            id TEXT PRIMARY KEY,
+            id VARCHAR(64) PRIMARY KEY,
             operator TEXT NOT NULL,
             action TEXT NOT NULL,
             target TEXT NOT NULL DEFAULT '',
@@ -504,7 +513,7 @@ def ensure_auth_tables(conn: sqlite3.Connection) -> None:
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS trash (
-            id TEXT PRIMARY KEY,
+            id VARCHAR(64) PRIMARY KEY,
             item_type TEXT NOT NULL CHECK (item_type IN ('user', 'page', 'key')),
             item_id TEXT NOT NULL,
             item_data TEXT NOT NULL,
@@ -652,6 +661,19 @@ def is_admin_user(user: dict[str, Any]) -> bool:
     return "super" in roles or "admin" in roles
 
 
+def xss_escape(value: str | None) -> str:
+    """XSS 基础防护：对用户可控文本进行 HTML 转义。"""
+    return html.escape(value) if value else ""
+
+
+def check_owner(row: dict[str, Any] | None, current_user: dict[str, Any]) -> None:
+    """防越权校验：仅资源所有者或管理员可操作。"""
+    if not row:
+        raise HTTPException(status_code=404, detail="资源不存在")
+    if row.get("owner_username") != current_user["username"] and not is_admin_user(current_user):
+        raise HTTPException(status_code=403, detail="无权操作")
+
+
 def log_operation(
     operator: str,
     action: str,
@@ -708,10 +730,10 @@ def ensure_db_schema(conn: sqlite3.Connection) -> None:
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS site_pages (
-            id TEXT PRIMARY KEY,
+            id VARCHAR(64) PRIMARY KEY,
             owner_username TEXT NOT NULL,
-            site_path TEXT NOT NULL UNIQUE,
-            bind_domain TEXT NOT NULL UNIQUE,
+            site_path VARCHAR(255) NOT NULL UNIQUE,
+            bind_domain VARCHAR(255) NOT NULL UNIQUE,
             site_name TEXT NOT NULL,
             site_description TEXT NOT NULL,
             template_id TEXT NOT NULL,
@@ -887,14 +909,33 @@ def safe_json(data: Any) -> str:
 
 
 def _convert_sql_placeholders(query: str) -> str:
-    """将 SQLite 的 ? 占位符转换为 PostgreSQL 的 %s 占位符。"""
+    """将 SQLite 的 ? 占位符转换为 MySQL 的 %s 占位符。"""
     return query.replace("?", "%s")
 
 
-class DbConn:
-    """兼容 SQLite 调用习惯的 PostgreSQL 连接包装器。"""
+def _parse_mysql_url(url: str) -> dict[str, Any]:
+    parsed = urlparse(url)
+    if parsed.scheme not in {"mysql", "mysql+pymysql"}:
+        raise RuntimeError("DATABASE_URL 必须使用 mysql:// 或 mysql+pymysql://")
+    return {
+        "host": parsed.hostname or "127.0.0.1",
+        "port": parsed.port or 3306,
+        "user": unquote(parsed.username or "root"),
+        "password": unquote(parsed.password or "123456"),
+        "database": (parsed.path or "/template_cms").lstrip("/"),
+        "charset": "utf8mb4",
+        "autocommit": False,
+        "cursorclass": pymysql.cursors.DictCursor,
+        "connect_timeout": int(os.environ.get("MYSQL_CONNECT_TIMEOUT", "5")),
+        "read_timeout": int(os.environ.get("MYSQL_READ_TIMEOUT", "10")),
+        "write_timeout": int(os.environ.get("MYSQL_WRITE_TIMEOUT", "10")),
+    }
 
-    def __init__(self, conn: psycopg.Connection):
+
+class DbConn:
+    """兼容 SQLite 调用习惯的 MySQL 连接包装器。"""
+
+    def __init__(self, conn: Any):
         self._conn = conn
 
     def __enter__(self):
@@ -909,7 +950,9 @@ class DbConn:
 
     def execute(self, query: str, params: list[Any] | tuple[Any, ...] | None = None):
         sql = _convert_sql_placeholders(query)
-        return self._conn.execute(sql, params or ())
+        cursor = self._conn.cursor()
+        cursor.execute(sql, params or ())
+        return cursor
 
     def commit(self):
         self._conn.commit()
@@ -917,8 +960,19 @@ class DbConn:
 
 
 def get_conn() -> DbConn:
-    """统一数据库连接：使用 PostgreSQL（生产可用）。"""
-    raw = psycopg.connect(DATABASE_URL, row_factory=psycopg.rows.dict_row)
+    """统一数据库连接：使用 MySQL（生产可用）。"""
+    cfg = _parse_mysql_url(DATABASE_URL)
+    try:
+        raw = pymysql.connect(**cfg)
+    except Exception as e:
+        logger.exception(
+            "数据库连接失败 host=%s port=%s database=%s err=%s",
+            cfg["host"],
+            cfg["port"],
+            cfg["database"],
+            e,
+        )
+        raise
     return DbConn(raw)
 
 
@@ -927,15 +981,15 @@ def ensure_auth_tables(conn: Any) -> None:
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS users (
-            id TEXT PRIMARY KEY,
-            username TEXT NOT NULL UNIQUE,
-            password TEXT NOT NULL,
-            real_name TEXT NOT NULL,
-            avatar TEXT NOT NULL DEFAULT '',
-            user_desc TEXT NOT NULL DEFAULT '',
-            home_path TEXT NOT NULL DEFAULT '/analytics',
+            id VARCHAR(64) PRIMARY KEY,
+            username VARCHAR(64) NOT NULL UNIQUE,
+            password VARCHAR(255) NOT NULL,
+            real_name VARCHAR(100) NOT NULL,
+            avatar VARCHAR(500) NOT NULL DEFAULT '',
+            user_desc TEXT NOT NULL,
+            home_path VARCHAR(255) NOT NULL DEFAULT '/analytics',
             roles TEXT NOT NULL,
-            created_at TEXT NOT NULL
+            created_at VARCHAR(40) NOT NULL
         )
         """
     )
@@ -943,14 +997,14 @@ def ensure_auth_tables(conn: Any) -> None:
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS register_keys (
-            id TEXT PRIMARY KEY,
-            register_key TEXT NOT NULL UNIQUE,
-            role TEXT NOT NULL CHECK (role IN ('admin', 'super', 'user')),
-            created_by TEXT NOT NULL,
-            used_by TEXT,
-            used_at TEXT,
-            created_at TEXT NOT NULL,
-            expires_at TEXT
+            id VARCHAR(64) PRIMARY KEY,
+            register_key VARCHAR(255) NOT NULL UNIQUE,
+            role VARCHAR(20) NOT NULL,
+            created_by VARCHAR(64) NOT NULL,
+            used_by VARCHAR(64),
+            used_at VARCHAR(40),
+            created_at VARCHAR(40) NOT NULL,
+            expires_at VARCHAR(40)
         )
         """
     )
@@ -958,11 +1012,11 @@ def ensure_auth_tables(conn: Any) -> None:
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS user_page_quota (
-            user_id TEXT PRIMARY KEY,
+            user_id VARCHAR(64) PRIMARY KEY,
             max_pages INTEGER NOT NULL DEFAULT 1,
-            start_date TEXT,
-            end_date TEXT,
-            plan_type TEXT NOT NULL DEFAULT 'free'
+            start_date VARCHAR(40),
+            end_date VARCHAR(40),
+            plan_type VARCHAR(20) NOT NULL DEFAULT 'free'
         )
         """
     )
@@ -970,12 +1024,12 @@ def ensure_auth_tables(conn: Any) -> None:
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS recharge_orders (
-            id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL,
-            username TEXT NOT NULL,
-            plan_type TEXT NOT NULL CHECK (plan_type IN ('free', 'basic', 'pro', 'enterprise')),
-            status TEXT NOT NULL CHECK (status IN ('pending', 'paid')),
-            created_at TEXT NOT NULL
+            id VARCHAR(64) PRIMARY KEY,
+            user_id VARCHAR(64) NOT NULL,
+            username VARCHAR(64) NOT NULL,
+            plan_type VARCHAR(20) NOT NULL,
+            status VARCHAR(20) NOT NULL,
+            created_at VARCHAR(40) NOT NULL
         )
         """
     )
@@ -983,12 +1037,12 @@ def ensure_auth_tables(conn: Any) -> None:
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS operation_logs (
-            id TEXT PRIMARY KEY,
-            operator TEXT NOT NULL,
-            action TEXT NOT NULL,
-            target TEXT NOT NULL DEFAULT '',
-            detail TEXT NOT NULL DEFAULT '',
-            created_at TEXT NOT NULL
+            id VARCHAR(64) PRIMARY KEY,
+            operator VARCHAR(64) NOT NULL,
+            action VARCHAR(64) NOT NULL,
+            target VARCHAR(255) NOT NULL DEFAULT '',
+            detail TEXT NOT NULL,
+            created_at VARCHAR(40) NOT NULL
         )
         """
     )
@@ -996,14 +1050,14 @@ def ensure_auth_tables(conn: Any) -> None:
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS security_events (
-            id TEXT PRIMARY KEY,
-            event_type TEXT NOT NULL,
-            ip TEXT NOT NULL,
-            path TEXT NOT NULL,
-            method TEXT NOT NULL,
-            detail TEXT NOT NULL DEFAULT '',
-            ua TEXT NOT NULL DEFAULT '',
-            created_at TEXT NOT NULL
+            id VARCHAR(64) PRIMARY KEY,
+            event_type VARCHAR(64) NOT NULL,
+            ip VARCHAR(64) NOT NULL,
+            path VARCHAR(255) NOT NULL,
+            method VARCHAR(16) NOT NULL,
+            detail TEXT NOT NULL,
+            ua TEXT NOT NULL,
+            created_at VARCHAR(40) NOT NULL
         )
         """
     )
@@ -1011,42 +1065,42 @@ def ensure_auth_tables(conn: Any) -> None:
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS trash (
-            id TEXT PRIMARY KEY,
-            item_type TEXT NOT NULL CHECK (item_type IN ('user', 'page', 'key')),
-            item_id TEXT NOT NULL,
-            item_data TEXT NOT NULL,
-            deleted_by TEXT NOT NULL,
-            deleted_at TEXT NOT NULL,
-            expire_at TEXT NOT NULL
+            id VARCHAR(64) PRIMARY KEY,
+            item_type VARCHAR(20) NOT NULL,
+            item_id VARCHAR(64) NOT NULL,
+            item_data LONGTEXT NOT NULL,
+            deleted_by VARCHAR(64) NOT NULL,
+            deleted_at VARCHAR(40) NOT NULL,
+            expire_at VARCHAR(40) NOT NULL
         )
         """
     )
 
 
 def ensure_db_schema(conn: Any) -> None:
-    """初始化并迁移 site_pages 结构（PostgreSQL 版本）。"""
+    """初始化并迁移 site_pages 结构（MySQL 版本）。"""
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS site_pages (
-            id TEXT PRIMARY KEY,
-            owner_username TEXT NOT NULL,
-            site_path TEXT NOT NULL UNIQUE,
-            bind_domain TEXT NOT NULL UNIQUE,
-            site_name TEXT NOT NULL,
+            id VARCHAR(64) PRIMARY KEY,
+            owner_username VARCHAR(64) NOT NULL,
+            site_path VARCHAR(255) NOT NULL UNIQUE,
+            bind_domain VARCHAR(255) NOT NULL UNIQUE,
+            site_name VARCHAR(255) NOT NULL,
             site_description TEXT NOT NULL,
-            template_id TEXT NOT NULL,
-            nav_items TEXT NOT NULL,
-            colors TEXT NOT NULL,
-            fonts TEXT NOT NULL,
-            status TEXT NOT NULL CHECK (status IN ('draft', 'published')),
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
+            template_id VARCHAR(64) NOT NULL,
+            nav_items LONGTEXT NOT NULL,
+            colors LONGTEXT NOT NULL,
+            fonts LONGTEXT NOT NULL,
+            status VARCHAR(20) NOT NULL,
+            created_at VARCHAR(40) NOT NULL,
+            updated_at VARCHAR(40) NOT NULL
         )
         """
     )
 
 
-def pg_execute(conn: Any, query: str, params: list[Any] | tuple[Any, ...] | None = None):
+def mysql_execute(conn: Any, query: str, params: list[Any] | tuple[Any, ...] | None = None):
     """统一执行 SQL，自动占位符转换，避免拼接 SQL 造成注入风险。"""
     sql = _convert_sql_placeholders(query)
     return conn.execute(sql, params or ())
@@ -1064,7 +1118,7 @@ def log_security_event(event_type: str, ip: str, path: str, method: str, detail:
     )
     try:
         with get_conn() as conn:
-            pg_execute(
+            mysql_execute(
                 conn,
                 "INSERT INTO security_events (id, event_type, ip, path, method, detail, ua, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 (str(uuid.uuid4()), event_type, ip, path, method, detail, ua, now_iso()),
@@ -1075,43 +1129,64 @@ def log_security_event(event_type: str, ip: str, path: str, method: str, detail:
 
 
 def _redis_incr_window(key: str, window: int) -> int:
-    n = redis_client.incr(key)
-    if n == 1:
-        redis_client.expire(key, window)
-    return int(n)
+    """Redis 不可用时降级，避免影响接口访问（如 /docs）。"""
+    try:
+        n = redis_client.incr(key)
+        if n == 1:
+            redis_client.expire(key, window)
+        return int(n)
+    except Exception:
+        return 1
 
 
 def check_login_rate_limit(ip: str) -> None:
-    """登录防暴力破解（Redis 持久化计数 + 锁定）。"""
-    lock_key = _rk(f"login:lock:{ip}")
-    ttl = redis_client.ttl(lock_key)
-    if ttl and ttl > 0:
-        raise HTTPException(status_code=429, detail=f"登录失败过多，请 {ttl} 秒后重试")
+    """登录防暴力破解（Redis 持久化计数 + 锁定）。Redis 不可用时降级放行。"""
+    try:
+        lock_key = _rk(f"login:lock:{ip}")
+        ttl = redis_client.ttl(lock_key)
+        if ttl and ttl > 0:
+            raise HTTPException(status_code=429, detail=f"登录失败过多，请 {ttl} 秒后重试")
+    except HTTPException:
+        raise
+    except Exception:
+        return
 
 
 def record_login_fail(ip: str) -> None:
     fail_key = _rk(f"login:fail:{ip}")
     cnt = _redis_incr_window(fail_key, _LOGIN_WINDOW_SEC)
     if cnt >= _LOGIN_MAX_FAIL:
-        redis_client.setex(_rk(f"login:lock:{ip}"), _LOGIN_LOCK_SEC, "1")
+        try:
+            redis_client.setex(_rk(f"login:lock:{ip}"), _LOGIN_LOCK_SEC, "1")
+        except Exception:
+            return
 
 
 def clear_login_fail(ip: str) -> None:
-    redis_client.delete(_rk(f"login:fail:{ip}"), _rk(f"login:lock:{ip}"))
+    try:
+        redis_client.delete(_rk(f"login:fail:{ip}"), _rk(f"login:lock:{ip}"))
+    except Exception:
+        return
 
 
 def get_user_token_version(username: str) -> int:
     k = _rk(f"jwt:ver:{username}")
-    v = redis_client.get(k)
-    if v is None:
-        redis_client.set(k, "1")
+    try:
+        v = redis_client.get(k)
+        if v is None:
+            redis_client.set(k, "1")
+            return 1
+        return int(v)
+    except Exception:
         return 1
-    return int(v)
 
 
 def bump_user_token_version(username: str) -> int:
     k = _rk(f"jwt:ver:{username}")
-    return int(redis_client.incr(k))
+    try:
+        return int(redis_client.incr(k))
+    except Exception:
+        return 1
 
 
 def blacklist_token(token: str, exp_ts: float | None = None) -> None:
@@ -1119,12 +1194,18 @@ def blacklist_token(token: str, exp_ts: float | None = None) -> None:
     ttl = JWT_BLACKLIST_TTL_SEC
     if exp_ts:
         ttl = max(1, int(exp_ts - time.time()) + 60)
-    redis_client.setex(_rk(f"jwt:blacklist:{fp}"), ttl, "1")
+    try:
+        redis_client.setex(_rk(f"jwt:blacklist:{fp}"), ttl, "1")
+    except Exception:
+        return
 
 
 def is_token_blacklisted(token: str) -> bool:
     fp = hashlib.sha256(token.encode()).hexdigest()
-    return bool(redis_client.exists(_rk(f"jwt:blacklist:{fp}")))
+    try:
+        return bool(redis_client.exists(_rk(f"jwt:blacklist:{fp}")))
+    except Exception:
+        return False
 
 
 def create_access_token(username: str) -> str:
@@ -1228,8 +1309,13 @@ class SecurityMiddleware(BaseHTTPMiddleware):
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    kill_port_conflict(5322)
+    api_host = os.environ.get("API_HOST", "127.0.0.1")
+    api_port = int(os.environ.get("API_PORT", "5322"))
+
+    kill_port_conflict(api_port)
     init_db()
+
+    print(f"[startup] Template CMS API: http://{api_host}:{api_port}", flush=True)
     yield
 
 
@@ -1286,6 +1372,9 @@ def create_site_page(
     """
     user = get_current_user(authorization)
     owner_username = user["username"]
+    site_path: str = xss_escape(payload.site_path)
+    site_name: str = xss_escape(payload.site_name)
+    site_description: str = xss_escape(payload.site_description)
     bind_domain = normalize_domain(payload.bind_domain)
 
     ts = now_iso()
@@ -1306,17 +1395,17 @@ def create_site_page(
                 if end_date and today > end_date:
                     raise HTTPException(status_code=403, detail="生成权限已过期")
 
-                count = conn.execute(
-                    "SELECT COUNT(1) AS c FROM site_pages WHERE owner_username = ?",
-                    (owner_username,),
-                ).fetchone()["c"]
-                if count >= max_pages:
-                    raise HTTPException(
-                        status_code=403,
-                        detail=f"已达到最大生成页面数量（{max_pages}）",
-                    )
+            count = conn.execute(
+                "SELECT COUNT(1) AS c FROM site_pages WHERE owner_username = ?",
+                (owner_username,),
+            ).fetchone()["c"]
+            if count >= max_pages:
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"已达到最大生成页面数量（{max_pages}）",
+                )
 
-        check_path_unique(conn, payload.site_path)
+        check_path_unique(conn, site_path)
         check_domain_unique(conn, bind_domain)
 
         conn.execute(
@@ -1329,10 +1418,10 @@ def create_site_page(
             (
                 page_id,
                 owner_username,
-                payload.site_path,
+                site_path,
                 bind_domain,
-                payload.site_name,
-                payload.site_description,
+                site_name,
+                site_description,
                 payload.template_id,
                 json.dumps(payload.nav_items, ensure_ascii=False),
                 json.dumps(payload.colors, ensure_ascii=False),
@@ -1474,24 +1563,24 @@ def list_site_pages(
 
     with get_conn() as conn:
         # 所有角色只查看自己生成的页面
-        if status:
-            rows = conn.execute(
-                """
-                SELECT * FROM site_pages
-                WHERE owner_username = ? AND status = ?
-                ORDER BY created_at DESC
-                """,
-                (user["username"], status),
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                """
-                SELECT * FROM site_pages
-                WHERE owner_username = ?
-                ORDER BY created_at DESC
-                """,
-                (user["username"],),
-            ).fetchall()
+            if status:
+                rows = conn.execute(
+                    """
+                    SELECT * FROM site_pages
+                    WHERE owner_username = ? AND status = ?
+                    ORDER BY created_at DESC
+                    """,
+                    (user["username"], status),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT * FROM site_pages
+                    WHERE owner_username = ?
+                    ORDER BY created_at DESC
+                    """,
+                    (user["username"],),
+                ).fetchall()
 
     return ApiEnvelope(code=0, data=[row_to_page(row) for row in rows], message="ok")
 
@@ -2734,8 +2823,7 @@ def menu_all(authorization: str | None = Header(default=None)) -> ApiEnvelope:
 if __name__ == "__main__":
     import uvicorn
 
-    # 启动前主动清理端口冲突的旧进程（开发/生产均生效）
-    kill_port_conflict(5322)
-    uvicorn.run("main:app", host="0.0.0.0", port=5322, reload=not IS_PROD)
- 
-                    
+    host = os.environ.get("API_BIND_HOST", "0.0.0.0")
+    port = int(os.environ.get("API_PORT", "5322"))
+
+    uvicorn.run("main:app", host=host, port=port, reload=not IS_PROD)
