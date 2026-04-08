@@ -1,0 +1,106 @@
+[
+  {
+    "url": "http://127.0.0.1:5322/api/public/site-pages/domain/www.dyzpt.xyz",
+    "started_at": "2026-04-08 17:19:30",
+    "total_requests": 100,
+    "concurrency": 10,
+    "timeout_seconds": 10,
+    "total_time_seconds": 62.313,
+    "requests_per_second": 1.605,
+    "success_count": 99,
+    "failed_count": 1,
+    "success_rate": 99.0,
+    "avg_latency_ms": 6204.27,
+    "min_latency_ms": 2489.78,
+    "max_latency_ms": 10819.67,
+    "p50_latency_ms": 6201.56,
+    "p95_latency_ms": 7096.63,
+    "p99_latency_ms": 10778.58,
+    "status_distribution": {
+      "200": 99,
+      "NO_STATUS": 1
+    },
+    "error_distribution": {
+      "timed out": 1
+    },
+    "request_headers": {
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
+      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/json;q=0.7",
+      "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+      "Cache-Control": "no-cache",
+      "Pragma": "no-cache",
+      "Connection": "keep-alive",
+      "Upgrade-Insecure-Requests": "1",
+      "Referer": "http://www.dyzpt.xyz:5666/"
+    }
+  },
+  {
+    "url": "http://127.0.0.1:5322/api/public/site-pages/domain/www.dyzpt.xyz",
+    "started_at": "2026-04-08 17:20:33",
+    "total_requests": 100,
+    "concurrency": 20,
+    "timeout_seconds": 10,
+    "total_time_seconds": 50.635,
+    "requests_per_second": 1.975,
+    "success_count": 6,
+    "failed_count": 94,
+    "success_rate": 6.0,
+    "avg_latency_ms": 9941.5,
+    "min_latency_ms": 6838.3,
+    "max_latency_ms": 10552.77,
+    "p50_latency_ms": 10012.56,
+    "p95_latency_ms": 10028.04,
+    "p99_latency_ms": 10036.86,
+    "status_distribution": {
+      "200": 6,
+      "NO_STATUS": 94
+    },
+    "error_distribution": {
+      "timed out": 94
+    },
+    "request_headers": {
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
+      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/json;q=0.7",
+      "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+      "Cache-Control": "no-cache",
+      "Pragma": "no-cache",
+      "Connection": "keep-alive",
+      "Upgrade-Insecure-Requests": "1",
+      "Referer": "http://www.dyzpt.xyz:5666/"
+    }
+  },
+  {
+    "url": "http://127.0.0.1:5322/api/public/site-pages/domain/www.dyzpt.xyz",
+    "started_at": "2026-04-08 17:21:23",
+    "total_requests": 100,
+    "concurrency": 50,
+    "timeout_seconds": 10,
+    "total_time_seconds": 20.063,
+    "requests_per_second": 4.984,
+    "success_count": 0,
+    "failed_count": 100,
+    "success_rate": 0.0,
+    "avg_latency_ms": 10012.12,
+    "min_latency_ms": 10001.74,
+    "max_latency_ms": 10026.71,
+    "p50_latency_ms": 10011.6,
+    "p95_latency_ms": 10020.18,
+    "p99_latency_ms": 10025.44,
+    "status_distribution": {
+      "NO_STATUS": 100
+    },
+    "error_distribution": {
+      "timed out": 100
+    },
+    "request_headers": {
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
+      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/json;q=0.7",
+      "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+      "Cache-Control": "no-cache",
+      "Pragma": "no-cache",
+      "Connection": "keep-alive",
+      "Upgrade-Insecure-Requests": "1",
+      "Referer": "http://www.dyzpt.xyz:5666/"
+    }
+  }
+]

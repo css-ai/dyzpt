@@ -19,6 +19,7 @@ from urllib.parse import unquote, urlparse
 
 import pymysql
 import redis
+from dbutils.pooled_db import PooledDB
 from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -47,6 +48,12 @@ REDIS_PREFIX = os.environ.get("SECURITY_REDIS_PREFIX", "template_cms")
 REDIS_CONNECT_TIMEOUT = float(os.environ.get("REDIS_CONNECT_TIMEOUT", "0.3"))
 REDIS_SOCKET_TIMEOUT = float(os.environ.get("REDIS_SOCKET_TIMEOUT", "0.3"))
 
+# MySQL 连接池配置
+MYSQL_POOL_MAX_CONNECTIONS = int(os.environ.get("MYSQL_POOL_MAX_CONNECTIONS", "32"))
+MYSQL_POOL_MIN_CACHED = int(os.environ.get("MYSQL_POOL_MIN_CACHED", "4"))
+MYSQL_POOL_MAX_CACHED = int(os.environ.get("MYSQL_POOL_MAX_CACHED", "16"))
+MYSQL_POOL_BLOCKING = os.environ.get("MYSQL_POOL_BLOCKING", "1") == "1"
+
 # 仅在显式开启时信任反向代理 X-Forwarded-For（避免被伪造）
 TRUST_PROXY_HEADERS = os.environ.get("TRUST_PROXY_HEADERS", "0") == "1"
 
@@ -63,6 +70,10 @@ GLOBAL_RATE_LIMIT = int(os.environ.get("GLOBAL_RATE_LIMIT", "180"))
 GLOBAL_RATE_WINDOW_SEC = int(os.environ.get("GLOBAL_RATE_WINDOW_SEC", "60"))
 CC_PATH_RATE_LIMIT = int(os.environ.get("CC_PATH_RATE_LIMIT", "60"))
 CC_PATH_RATE_WINDOW_SEC = int(os.environ.get("CC_PATH_RATE_WINDOW_SEC", "10"))
+PUBLIC_RATE_LIMIT = int(os.environ.get("PUBLIC_RATE_LIMIT", "1200"))
+PUBLIC_RATE_WINDOW_SEC = int(os.environ.get("PUBLIC_RATE_WINDOW_SEC", "60"))
+PUBLIC_CC_PATH_RATE_LIMIT = int(os.environ.get("PUBLIC_CC_PATH_RATE_LIMIT", "600"))
+PUBLIC_CC_PATH_RATE_WINDOW_SEC = int(os.environ.get("PUBLIC_CC_PATH_RATE_WINDOW_SEC", "10"))
 BOT_SCORE_BLOCK = int(os.environ.get("BOT_SCORE_BLOCK", "80"))
 BOT_SCORE_CHALLENGE = int(os.environ.get("BOT_SCORE_CHALLENGE", "50"))
 
@@ -958,13 +969,32 @@ class DbConn:
         self._conn.commit()
 
 
+_mysql_pool: PooledDB | None = None
+
+
+def get_mysql_pool() -> PooledDB:
+    global _mysql_pool
+    if _mysql_pool is None:
+        cfg = _parse_mysql_url(DATABASE_URL)
+        _mysql_pool = PooledDB(
+            creator=pymysql,
+            maxconnections=MYSQL_POOL_MAX_CONNECTIONS,
+            mincached=MYSQL_POOL_MIN_CACHED,
+            maxcached=MYSQL_POOL_MAX_CACHED,
+            blocking=MYSQL_POOL_BLOCKING,
+            ping=1,
+            **cfg,
+        )
+    return _mysql_pool
+
+
 
 def get_conn() -> DbConn:
-    """统一数据库连接：使用 MySQL（生产可用）。"""
-    cfg = _parse_mysql_url(DATABASE_URL)
+    """统一数据库连接：使用 MySQL 连接池。"""
     try:
-        raw = pymysql.connect(**cfg)
+        raw = get_mysql_pool().connection()
     except Exception as e:
+        cfg = _parse_mysql_url(DATABASE_URL)
         logger.exception(
             "数据库连接失败 host=%s port=%s database=%s err=%s",
             cfg["host"],
@@ -1263,17 +1293,25 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         path = request.url.path
         method = request.method.upper()
         ua = request.headers.get("user-agent", "")
+        is_public_site_page = path.startswith("/api/public/site-pages/domain/") or path.startswith("/api/public/site-pages/path/")
+
+        current_global_limit = PUBLIC_RATE_LIMIT if is_public_site_page else GLOBAL_RATE_LIMIT
+        current_global_window = PUBLIC_RATE_WINDOW_SEC if is_public_site_page else GLOBAL_RATE_WINDOW_SEC
+        current_cc_limit = PUBLIC_CC_PATH_RATE_LIMIT if is_public_site_page else CC_PATH_RATE_LIMIT
+        current_cc_window = PUBLIC_CC_PATH_RATE_WINDOW_SEC if is_public_site_page else CC_PATH_RATE_WINDOW_SEC
+        current_global_detail = "public_global" if is_public_site_page else "global"
+        current_cc_detail = "public_path" if is_public_site_page else "path"
 
         # 全局接口限流（IP 维度）
         global_key = _rk(f"rl:global:{ip}")
-        if _redis_incr_window(global_key, GLOBAL_RATE_WINDOW_SEC) > GLOBAL_RATE_LIMIT:
-            log_security_event("rate_limit_block", ip, path, method, detail="global", ua=ua)
+        if _redis_incr_window(global_key, current_global_window) > current_global_limit:
+            log_security_event("rate_limit_block", ip, path, method, detail=current_global_detail, ua=ua)
             return JSONResponse(status_code=429, content={"detail": "请求过于频繁，请稍后重试"})
 
         # 防 CC：IP + Path 高频限制
         cc_key = _rk(f"rl:cc:{ip}:{path}")
-        if _redis_incr_window(cc_key, CC_PATH_RATE_WINDOW_SEC) > CC_PATH_RATE_LIMIT:
-            log_security_event("cc_block", ip, path, method, detail="path", ua=ua)
+        if _redis_incr_window(cc_key, current_cc_window) > current_cc_limit:
+            log_security_event("cc_block", ip, path, method, detail=current_cc_detail, ua=ua)
             return JSONResponse(status_code=429, content={"detail": "访问过于频繁，已触发防护"})
 
         # 防爬虫：基础 UA 风险评分
