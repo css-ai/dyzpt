@@ -11,9 +11,11 @@ import secrets
 import sqlite3
 import time
 import uuid
+from collections import OrderedDict
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from threading import Lock
 from typing import Any, Literal
 from urllib.parse import unquote, urlparse
 
@@ -30,6 +32,7 @@ from starlette.responses import JSONResponse
 
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = BASE_DIR / "site_pages.db"  # 兼容当前 SQLite 相关逻辑
+JWT_SECRET_FILE = BASE_DIR / ".jwt_secret"
 
 # ==================== 生产安全配置 ====================
 ENV = os.environ.get("APP_ENV", "development").lower()
@@ -49,9 +52,9 @@ REDIS_CONNECT_TIMEOUT = float(os.environ.get("REDIS_CONNECT_TIMEOUT", "0.3"))
 REDIS_SOCKET_TIMEOUT = float(os.environ.get("REDIS_SOCKET_TIMEOUT", "0.3"))
 
 # MySQL 连接池配置
-MYSQL_POOL_MAX_CONNECTIONS = int(os.environ.get("MYSQL_POOL_MAX_CONNECTIONS", "32"))
-MYSQL_POOL_MIN_CACHED = int(os.environ.get("MYSQL_POOL_MIN_CACHED", "4"))
-MYSQL_POOL_MAX_CACHED = int(os.environ.get("MYSQL_POOL_MAX_CACHED", "16"))
+MYSQL_POOL_MAX_CONNECTIONS = int(os.environ.get("MYSQL_POOL_MAX_CONNECTIONS", "64"))
+MYSQL_POOL_MIN_CACHED = int(os.environ.get("MYSQL_POOL_MIN_CACHED", "8"))
+MYSQL_POOL_MAX_CACHED = int(os.environ.get("MYSQL_POOL_MAX_CACHED", "32"))
 MYSQL_POOL_BLOCKING = os.environ.get("MYSQL_POOL_BLOCKING", "1") == "1"
 
 # 仅在显式开启时信任反向代理 X-Forwarded-For（避免被伪造）
@@ -70,10 +73,14 @@ GLOBAL_RATE_LIMIT = int(os.environ.get("GLOBAL_RATE_LIMIT", "180"))
 GLOBAL_RATE_WINDOW_SEC = int(os.environ.get("GLOBAL_RATE_WINDOW_SEC", "60"))
 CC_PATH_RATE_LIMIT = int(os.environ.get("CC_PATH_RATE_LIMIT", "60"))
 CC_PATH_RATE_WINDOW_SEC = int(os.environ.get("CC_PATH_RATE_WINDOW_SEC", "10"))
-PUBLIC_RATE_LIMIT = int(os.environ.get("PUBLIC_RATE_LIMIT", "1200"))
+# 公开页面接口需要承载真实访客访问，默认放宽到可稳定容纳至少 200 人同时访问。
+PUBLIC_RATE_LIMIT = int(os.environ.get("PUBLIC_RATE_LIMIT", "6000"))
 PUBLIC_RATE_WINDOW_SEC = int(os.environ.get("PUBLIC_RATE_WINDOW_SEC", "60"))
-PUBLIC_CC_PATH_RATE_LIMIT = int(os.environ.get("PUBLIC_CC_PATH_RATE_LIMIT", "600"))
+PUBLIC_CC_PATH_RATE_LIMIT = int(os.environ.get("PUBLIC_CC_PATH_RATE_LIMIT", "2400"))
 PUBLIC_CC_PATH_RATE_WINDOW_SEC = int(os.environ.get("PUBLIC_CC_PATH_RATE_WINDOW_SEC", "10"))
+PUBLIC_CACHE_TTL_SEC = int(os.environ.get("PUBLIC_CACHE_TTL_SEC", "30"))
+PUBLIC_MEMORY_CACHE_TTL_SEC = int(os.environ.get("PUBLIC_MEMORY_CACHE_TTL_SEC", "5"))
+PUBLIC_MEMORY_CACHE_MAX_ITEMS = int(os.environ.get("PUBLIC_MEMORY_CACHE_MAX_ITEMS", "1024"))
 BOT_SCORE_BLOCK = int(os.environ.get("BOT_SCORE_BLOCK", "80"))
 BOT_SCORE_CHALLENGE = int(os.environ.get("BOT_SCORE_CHALLENGE", "50"))
 
@@ -119,13 +126,29 @@ def get_client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
-BASE_DIR = Path(__file__).resolve().parent
+
+def get_or_create_jwt_secret() -> str:
+    """获取稳定 JWT 密钥；开发环境未配置时落盘复用，避免多 worker 随机失效。"""
+    secret_from_env = os.environ.get("JWT_SECRET", "").strip()
+    if secret_from_env:
+        return secret_from_env
+    if IS_PROD:
+        raise RuntimeError("生产环境必须设置 JWT_SECRET")
+
+    try:
+        if JWT_SECRET_FILE.exists():
+            secret = JWT_SECRET_FILE.read_text(encoding="utf-8").strip()
+            if secret:
+                return secret
+        secret = secrets.token_hex(32)
+        JWT_SECRET_FILE.write_text(secret, encoding="utf-8")
+        return secret
+    except OSError as e:
+        raise RuntimeError(f"开发环境生成 JWT_SECRET 失败：{e}") from e
+
 
 # ==================== JWT 配置 ====================
-_jwt_secret_env = os.environ.get("JWT_SECRET", "")
-if IS_PROD and not _jwt_secret_env:
-    raise RuntimeError("生产环境必须设置 JWT_SECRET")
-JWT_SECRET: str = _jwt_secret_env or secrets.token_hex(32)
+JWT_SECRET: str = get_or_create_jwt_secret()
 JWT_ALGORITHM = "HS256"
 # accessToken 有效期（分钟），生产建议 30 分钟
 JWT_ACCESS_EXPIRE_MINUTES: int = int(os.environ.get("JWT_ACCESS_EXPIRE_MINUTES", "60"))
@@ -866,6 +889,110 @@ def row_to_page(row: sqlite3.Row) -> SitePageOut:
     )
 
 
+def row_to_public_page_data(row: dict[str, Any]) -> dict[str, Any]:
+    """公开页面接口使用的轻量反序列化，避免 Pydantic 模型构建开销。"""
+    return {
+        "id": row["id"],
+        "owner_username": row["owner_username"],
+        "site_path": row["site_path"],
+        "bind_domain": row["bind_domain"],
+        "site_name": row["site_name"],
+        "site_description": row["site_description"],
+        "template_id": row["template_id"],
+        "nav_items": json.loads(row["nav_items"]),
+        "colors": json.loads(row["colors"]),
+        "fonts": json.loads(row["fonts"]),
+        "status": row["status"],
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+    }
+
+
+def _public_cache_key(kind: str, value: str) -> str:
+    return _rk(f"public:site_page:{kind}:{value}")
+
+
+_public_memory_cache: OrderedDict[str, tuple[float, dict[str, Any]]] = OrderedDict()
+_public_memory_cache_lock = Lock()
+
+
+def _public_memory_cache_key(kind: str, value: str) -> str:
+    return f"{kind}:{value}"
+
+
+def _read_public_memory_cache(kind: str, value: str) -> dict[str, Any] | None:
+    cache_key = _public_memory_cache_key(kind, value)
+    now = time.time()
+    with _public_memory_cache_lock:
+        item = _public_memory_cache.get(cache_key)
+        if not item:
+            return None
+        expires_at, payload = item
+        if expires_at <= now:
+            _public_memory_cache.pop(cache_key, None)
+            return None
+        _public_memory_cache.move_to_end(cache_key)
+        return payload
+
+
+def _write_public_memory_cache(kind: str, value: str, payload: dict[str, Any]) -> None:
+    cache_key = _public_memory_cache_key(kind, value)
+    expires_at = time.time() + PUBLIC_MEMORY_CACHE_TTL_SEC
+    with _public_memory_cache_lock:
+        _public_memory_cache[cache_key] = (expires_at, payload)
+        _public_memory_cache.move_to_end(cache_key)
+        while len(_public_memory_cache) > PUBLIC_MEMORY_CACHE_MAX_ITEMS:
+            _public_memory_cache.popitem(last=False)
+
+
+def clear_public_page_cache(site_path: str | None = None, bind_domain: str | None = None) -> None:
+    keys: list[str] = []
+    memory_keys: list[str] = []
+    if site_path:
+        keys.append(_public_cache_key("path", site_path))
+        memory_keys.append(_public_memory_cache_key("path", site_path))
+    if bind_domain:
+        keys.append(_public_cache_key("domain", bind_domain))
+        memory_keys.append(_public_memory_cache_key("domain", bind_domain))
+    if memory_keys:
+        with _public_memory_cache_lock:
+            for key in memory_keys:
+                _public_memory_cache.pop(key, None)
+    if not keys:
+        return
+    try:
+        redis_client.delete(*keys)
+    except Exception:
+        return
+
+
+def _read_public_page_cache(kind: str, value: str) -> dict[str, Any] | None:
+    memory_cached = _read_public_memory_cache(kind, value)
+    if memory_cached is not None:
+        return memory_cached
+    try:
+        cached = redis_client.get(_public_cache_key(kind, value))
+        if not cached:
+            return None
+        payload = json.loads(cached)
+        _write_public_memory_cache(kind, value, payload)
+        return payload
+    except Exception:
+        return None
+
+
+def _write_public_page_cache(kind: str, value: str, payload: dict[str, Any]) -> None:
+    _write_public_memory_cache(kind, value, payload)
+    try:
+        redis_client.setex(
+            _public_cache_key(kind, value),
+            PUBLIC_CACHE_TTL_SEC,
+            json.dumps(payload, ensure_ascii=False),
+        )
+    except Exception:
+        return
+
+
 def check_path_unique(
     conn: sqlite3.Connection,
     site_path: str,
@@ -1239,7 +1366,7 @@ def is_token_blacklisted(token: str) -> bool:
 
 
 def create_access_token(username: str) -> str:
-    """生成 JWT，并注入 jti/ver 以支持黑名单和强制下线。"""
+    """生成 JWT；保留 jti 以支持黑名单，移除 ver 强校验避免多请求时序误伤。"""
     exp = time.time() + JWT_ACCESS_EXPIRE_MINUTES * 60
     return jwt_encode(
         {
@@ -1247,13 +1374,12 @@ def create_access_token(username: str) -> str:
             "exp": exp,
             "iat": time.time(),
             "jti": str(uuid.uuid4()),
-            "ver": get_user_token_version(username),
         }
     )
 
 
 def jwt_decode(token: str) -> dict:
-    """验证签名、过期、黑名单、token 版本。"""
+    """验证签名、过期、黑名单。"""
     import base64
 
     if is_token_blacklisted(token):
@@ -1273,13 +1399,6 @@ def jwt_decode(token: str) -> dict:
         payload = json.loads(base64.urlsafe_b64decode(pad(body_b)).decode())
         if payload.get("exp") and time.time() > payload["exp"]:
             raise ValueError("Token 已过期")
-
-        username = payload.get("sub")
-        if username:
-            current_ver = get_user_token_version(username)
-            token_ver = int(payload.get("ver", 1))
-            if token_ver != current_ver:
-                raise ValueError("Token 已被强制下线")
         return payload
     except ValueError as e:
         raise HTTPException(status_code=401, detail=f"Token 无效：{e}")
@@ -1308,27 +1427,30 @@ class SecurityMiddleware(BaseHTTPMiddleware):
             log_security_event("rate_limit_block", ip, path, method, detail=current_global_detail, ua=ua)
             return JSONResponse(status_code=429, content={"detail": "请求过于频繁，请稍后重试"})
 
-        # 防 CC：IP + Path 高频限制
-        cc_key = _rk(f"rl:cc:{ip}:{path}")
-        if _redis_incr_window(cc_key, current_cc_window) > current_cc_limit:
-            log_security_event("cc_block", ip, path, method, detail=current_cc_detail, ua=ua)
-            return JSONResponse(status_code=429, content={"detail": "访问过于频繁，已触发防护"})
+        # 公开页面接口只保留一层轻量全局限流，减少一次 Redis 往返。
+        if not is_public_site_page:
+            # 防 CC：IP + Path 高频限制
+            cc_key = _rk(f"rl:cc:{ip}:{path}")
+            if _redis_incr_window(cc_key, current_cc_window) > current_cc_limit:
+                log_security_event("cc_block", ip, path, method, detail=current_cc_detail, ua=ua)
+                return JSONResponse(status_code=429, content={"detail": "访问过于频繁，已触发防护"})
 
-        # 防爬虫：基础 UA 风险评分
-        bot_score = 0
-        ua_low = ua.lower()
-        if not ua:
-            bot_score += 40
-        if any(k in ua_low for k in ["curl", "python", "wget", "scrapy", "spider", "bot"]):
-            bot_score += 70
-        if request.headers.get("accept", "") == "*/*":
-            bot_score += 15
-        if path.startswith("/api/public") and not request.headers.get("accept-language"):
-            bot_score += 10
+        # 公开页面接口保留轻量限流，但不过度执行 UA 反爬打分，避免误伤真实访客并降低中间件开销。
+        if not is_public_site_page:
+            bot_score = 0
+            ua_low = ua.lower()
+            if not ua:
+                bot_score += 40
+            if any(k in ua_low for k in ["curl", "python", "wget", "scrapy", "spider", "bot"]):
+                bot_score += 70
+            if request.headers.get("accept", "") == "*/*":
+                bot_score += 15
+            if path.startswith("/api/public") and not request.headers.get("accept-language"):
+                bot_score += 10
 
-        if bot_score >= BOT_SCORE_BLOCK:
-            log_security_event("bot_block", ip, path, method, detail=f"score={bot_score}", ua=ua)
-            return JSONResponse(status_code=403, content={"detail": "请求被安全策略拦截"})
+            if bot_score >= BOT_SCORE_BLOCK:
+                log_security_event("bot_block", ip, path, method, detail=f"score={bot_score}", ua=ua)
+                return JSONResponse(status_code=403, content={"detail": "请求被安全策略拦截"})
 
         resp = await call_next(request)
 
@@ -1446,6 +1568,10 @@ def create_site_page(
         check_path_unique(conn, site_path)
         check_domain_unique(conn, bind_domain)
 
+        nav_items_json = json.dumps(payload.nav_items, ensure_ascii=False)
+        colors_json = json.dumps(payload.colors, ensure_ascii=False)
+        fonts_json = json.dumps(payload.fonts, ensure_ascii=False)
+
         conn.execute(
             """
             INSERT INTO site_pages (
@@ -1461,9 +1587,9 @@ def create_site_page(
                 site_name,
                 site_description,
                 payload.template_id,
-                json.dumps(payload.nav_items, ensure_ascii=False),
-                json.dumps(payload.colors, ensure_ascii=False),
-                json.dumps(payload.fonts, ensure_ascii=False),
+                nav_items_json,
+                colors_json,
+                fonts_json,
                 payload.status,
                 ts,
                 ts,
@@ -1473,6 +1599,8 @@ def create_site_page(
             "SELECT * FROM site_pages WHERE id = ?",
             (page_id,),
         ).fetchone()
+
+    clear_public_page_cache(site_path=site_path, bind_domain=bind_domain)
 
     if not row:
         raise HTTPException(status_code=500, detail="创建失败")
@@ -1504,6 +1632,8 @@ def update_site_page(
             raise HTTPException(status_code=403, detail="无权编辑该页面")
 
         current = dict(row)
+        old_site_path = current["site_path"]
+        old_bind_domain = current["bind_domain"]
         data = payload.model_dump(exclude_unset=True)
 
         if "site_path" in data:
@@ -1527,6 +1657,10 @@ def update_site_page(
             "updated_at": now_iso(),
         }
 
+        nav_items_json = json.dumps(merged["nav_items"], ensure_ascii=False)
+        colors_json = json.dumps(merged["colors"], ensure_ascii=False)
+        fonts_json = json.dumps(merged["fonts"], ensure_ascii=False)
+
         conn.execute(
             """
             UPDATE site_pages
@@ -1540,9 +1674,9 @@ def update_site_page(
                 merged["site_name"],
                 merged["site_description"],
                 merged["template_id"],
-                json.dumps(merged["nav_items"], ensure_ascii=False),
-                json.dumps(merged["colors"], ensure_ascii=False),
-                json.dumps(merged["fonts"], ensure_ascii=False),
+                nav_items_json,
+                colors_json,
+                fonts_json,
                 merged["status"],
                 merged["updated_at"],
                 page_id,
@@ -1553,6 +1687,9 @@ def update_site_page(
             "SELECT * FROM site_pages WHERE id = ?",
             (page_id,),
         ).fetchone()
+
+    clear_public_page_cache(site_path=old_site_path, bind_domain=old_bind_domain)
+    clear_public_page_cache(site_path=merged["site_path"], bind_domain=merged["bind_domain"])
 
     if not updated:
         raise HTTPException(status_code=500, detail="更新失败")
@@ -1581,8 +1718,12 @@ def delete_site_page(
         if row["owner_username"] != user["username"] and not is_admin_user(user):
             raise HTTPException(status_code=403, detail="无权删除该页面")
 
+        old_site_path = row["site_path"]
+        old_bind_domain = row["bind_domain"]
         trash_put(conn, "page", page_id, dict(row), user["username"])
         conn.execute("DELETE FROM site_pages WHERE id = ?", (page_id,))
+
+    clear_public_page_cache(site_path=old_site_path, bind_domain=old_bind_domain)
 
     log_operation(user["username"], "delete_page", page_id, f"删除页面: {row['site_name']}")
     return ApiEnvelope(code=0, data=True, message="ok")
@@ -1652,30 +1793,54 @@ def get_site_page(
 @app.get("/api/public/site-pages/path/{site_path}", response_model=ApiEnvelope)
 def get_public_site_page_by_path(site_path: str) -> ApiEnvelope:
     """公开接口：通过 site_path 获取已发布页面，无需登录。"""
+    cached = _read_public_page_cache("path", site_path)
+    if cached is not None:
+        return ApiEnvelope(code=0, data=cached, message="ok")
+
     with get_conn() as conn:
         row = conn.execute(
-            "SELECT * FROM site_pages WHERE site_path = ? AND status = 'published'",
+            """
+            SELECT id, owner_username, site_path, bind_domain, site_name, site_description,
+                   template_id, nav_items, colors, fonts, status, created_at, updated_at
+            FROM site_pages
+            WHERE site_path = ? AND status = 'published'
+            """,
             (site_path,),
         ).fetchone()
 
     if not row:
         raise HTTPException(status_code=404, detail="公开页面不存在或未发布")
-    return ApiEnvelope(code=0, data=row_to_page(row), message="ok")
+
+    data = row_to_public_page_data(row)
+    _write_public_page_cache("path", site_path, data)
+    return ApiEnvelope(code=0, data=data, message="ok")
 
 
 @app.get("/api/public/site-pages/domain/{domain}", response_model=ApiEnvelope)
 def get_public_site_page_by_domain(domain: str) -> ApiEnvelope:
     """公开接口：通过绑定域名获取已发布页面，无需登录。域名会自动归一化处理。"""
     normalized = normalize_domain(domain)
+    cached = _read_public_page_cache("domain", normalized)
+    if cached is not None:
+        return ApiEnvelope(code=0, data=cached, message="ok")
+
     with get_conn() as conn:
         row = conn.execute(
-            "SELECT * FROM site_pages WHERE bind_domain = ? AND status = 'published'",
+            """
+            SELECT id, owner_username, site_path, bind_domain, site_name, site_description,
+                   template_id, nav_items, colors, fonts, status, created_at, updated_at
+            FROM site_pages
+            WHERE bind_domain = ? AND status = 'published'
+            """,
             (normalized,),
         ).fetchone()
 
     if not row:
         raise HTTPException(status_code=404, detail="该域名未绑定已发布页面")
-    return ApiEnvelope(code=0, data=row_to_page(row), message="ok")
+
+    data = row_to_public_page_data(row)
+    _write_public_page_cache("domain", normalized, data)
+    return ApiEnvelope(code=0, data=data, message="ok")
 
 
 # 兼容旧接口（已废弃，内部转发给 get_public_site_page_by_path）

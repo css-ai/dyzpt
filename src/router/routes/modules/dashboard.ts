@@ -81,6 +81,16 @@ const routes: RouteRecordRaw[] = [
           authority: ['super', 'admin'],
         },
       },
+      {
+        name:'WebEditor',
+        path:'/webeditor',
+        component:()=>import('#/views/dashboard/WebEditor/index.vue'),
+        meta:{
+          icon:'lucide:panels-top-left',
+          title:'网页编辑',
+          authority:['super','admin','user']
+        }
+      }
     ],
   },
 ];

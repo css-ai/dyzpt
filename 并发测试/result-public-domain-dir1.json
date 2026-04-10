@@ -1,0 +1,107 @@
+[
+  {
+    "url": "http://127.0.0.1:5322/api/public/site-pages/domain/www.dyzpt.xyz",
+    "started_at": "2026-04-09 18:40:11",
+    "total_requests": 500,
+    "concurrency": 50,
+    "timeout_seconds": 10,
+    "total_time_seconds": 100.375,
+    "requests_per_second": 4.981,
+    "success_count": 39,
+    "failed_count": 461,
+    "success_rate": 7.8,
+    "avg_latency_ms": 9493.95,
+    "min_latency_ms": 633.92,
+    "max_latency_ms": 10225.87,
+    "p50_latency_ms": 10012.42,
+    "p95_latency_ms": 10027.08,
+    "p99_latency_ms": 10038.82,
+    "status_distribution": {
+      "200": 39,
+      "NO_STATUS": 461
+    },
+    "error_distribution": {
+      "timed out": 461
+    },
+    "request_headers": {
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
+      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/json;q=0.7",
+      "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+      "Cache-Control": "no-cache",
+      "Pragma": "no-cache",
+      "Connection": "keep-alive",
+      "Upgrade-Insecure-Requests": "1",
+      "Referer": "http://www.dyzpt.xyz:5666/"
+    }
+  },
+  {
+    "url": "http://127.0.0.1:5322/api/public/site-pages/domain/www.dyzpt.xyz",
+    "started_at": "2026-04-09 18:41:51",
+    "total_requests": 500,
+    "concurrency": 100,
+    "timeout_seconds": 10,
+    "total_time_seconds": 50.131,
+    "requests_per_second": 9.974,
+    "success_count": 62,
+    "failed_count": 438,
+    "success_rate": 12.4,
+    "avg_latency_ms": 9019.5,
+    "min_latency_ms": 619.12,
+    "max_latency_ms": 10043.17,
+    "p50_latency_ms": 10016.73,
+    "p95_latency_ms": 10028.85,
+    "p99_latency_ms": 10033.86,
+    "status_distribution": {
+      "200": 62,
+      "NO_STATUS": 438
+    },
+    "error_distribution": {
+      "timed out": 438
+    },
+    "request_headers": {
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
+      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/json;q=0.7",
+      "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+      "Cache-Control": "no-cache",
+      "Pragma": "no-cache",
+      "Connection": "keep-alive",
+      "Upgrade-Insecure-Requests": "1",
+      "Referer": "http://www.dyzpt.xyz:5666/"
+    }
+  },
+  {
+    "url": "http://127.0.0.1:5322/api/public/site-pages/domain/www.dyzpt.xyz",
+    "started_at": "2026-04-09 18:42:41",
+    "total_requests": 500,
+    "concurrency": 200,
+    "timeout_seconds": 10,
+    "total_time_seconds": 20.577,
+    "requests_per_second": 24.299,
+    "success_count": 0,
+    "failed_count": 500,
+    "success_rate": 0.0,
+    "avg_latency_ms": 6752.41,
+    "min_latency_ms": 2030.49,
+    "max_latency_ms": 12073.4,
+    "p50_latency_ms": 10007.18,
+    "p95_latency_ms": 12056.89,
+    "p99_latency_ms": 12066.41,
+    "status_distribution": {
+      "NO_STATUS": 500
+    },
+    "error_distribution": {
+      "<urlopen error [WinError 10061] 由于目标计算机积极拒绝，无法连接。>": 224,
+      "timed out": 276
+    },
+    "request_headers": {
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
+      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/json;q=0.7",
+      "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+      "Cache-Control": "no-cache",
+      "Pragma": "no-cache",
+      "Connection": "keep-alive",
+      "Upgrade-Insecure-Requests": "1",
+      "Referer": "http://www.dyzpt.xyz:5666/"
+    }
+  }
+]

@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 import { computed } from 'vue';
 import type { GeneratedTemplate } from '#/store/template';
-import Navigation from '../Navigation.vue';
+import Navigation from '../HomePageTemplate/Navigation.vue';
 
 interface Props {
   template: GeneratedTemplate;

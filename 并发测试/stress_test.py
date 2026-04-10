@@ -239,8 +239,8 @@ def main() -> None:
         result: dict | list[dict] = summaries
     else:
         summary = run_stress_test(args.url, args.total, args.concurrency, args.timeout, headers)
-        print_summary(summary)
-        result = summary
+    print_summary(summary)
+    result = summary
 
     if args.output:
         with open(args.output, "w", encoding="utf-8") as f:

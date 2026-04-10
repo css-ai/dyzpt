@@ -14,7 +14,7 @@ defineOptions({ name: 'TemplateView' });
 const route = useRoute();
 const templateStore = useTemplateStore();
 
-const loading = ref(false);
+const loading = ref(true);
 const template = ref<null | any>(null);
 
 const routeDomain = computed(() =>
@@ -31,38 +31,35 @@ const accessDomain = computed(() => {
 
 const templateComponent = computed(() => {
   if (!template.value) return null;
-  
+
   const templateType = template.value.templateId;
   const componentMap: Record<string, any> = {
     'template-1': TemplateView1,
     'template-2': TemplateView2,
     'template-3': TemplateView3,
   };
-  
+
   return componentMap[templateType] || TemplateView1;
 });
 
 onMounted(async () => {
-  loading.value = true;
   try {
     template.value = await templateStore.fetchTemplateByDomain(accessDomain.value);
   } catch (error: any) {
     message.error(error?.message ?? '页面不存在或已下线');
   } finally {
-    loading.value = false;
+    if (!template.value) {
+      loading.value = false;
+    }
   }
 });
 </script>
 
 <template>
   <div class="template-view-wrapper">
-    <div v-if="loading" class="error-page">
-      <h1>页面加载中...</h1>
-    </div>
+    <component v-if="template && templateComponent" :is="templateComponent" :template="template" />
 
-    <component v-else-if="template && templateComponent" :is="templateComponent" :template="template" />
-
-    <div v-else class="error-page">
+    <div v-else-if="!loading" class="error-page">
       <h1>页面不存在</h1>
       <p>抱歉，您访问的域名未绑定页面，或页面已被删除。</p>
     </div>

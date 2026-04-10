@@ -9,7 +9,7 @@ export const template1Config = {
       name: '首页',
       route: '/home',
       icon: 'lucide:home',
-      children: [],
+      children: []
     },
     {
       name: '产品中心',

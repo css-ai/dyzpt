@@ -1,5 +1,8 @@
 # vb项目后台
 
+## 启动用
+- ` uvicorn main:app --host 0.0.0.0 --port 5322 --reload` 或 ` uvicorn main:app --host 0.0.0.0 --port 5322 --workers 4 `
+
 这是一个基于 `FastAPI` 的站点页面后端服务，用于支持“企业门户/模板站点”的创建、发布、公开访问、用户注册登录、套餐配额和基础安全防护。
 
 当前 README 已清理旧的历史对话导出内容，仅保留与当前代码一致的说明，并补充目前已经实现的功能。
@@ -271,7 +274,7 @@ redis==5.2.1
 在 `vb项目后台` 目录下执行：
 
 ```bash
-uvicorn main:app --reload --host 0.0.0.0 --port 5322
+ uvicorn main:app --host 0.0.0.0 --port 5322 --reload
 ```
 
 代码中默认读取：

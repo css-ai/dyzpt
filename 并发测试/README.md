@@ -1,5 +1,8 @@
 # 并发测试
 
+## 并发启动命令
+- `python "D:/项目/vue-vben-admin-main/apps/web-antd/并发测试/stress_test.py" --url http://127.0.0.1:5322/api/public/site-pages/domain/www.dyzpt.xyz --interactive`
+
 这个目录用于对你的站点或接口做简单压力测试。
 
 当前提供的是一个纯 Python 版本压测脚本，不依赖 `wrk`、`ab`、`k6`，适合你当前 Windows 环境直接运行。
