@@ -352,4 +352,30 @@ const updateSelectedProp = (key: string, value: any) => {
   font-size: 13px;
   background: #fff;
 }
+
+/* 画布区域：完全无样式（无 padding / margin / border / background） */
+.canvas {
+  flex: 1;
+  min-height: 0;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  display: block;
+}
+
+.canvas-block {
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+.canvas-block.selected {
+  outline: 2px solid #1677ff;
+  outline-offset: 0;
+  box-shadow: none;
+}
 </style>
